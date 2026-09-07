@@ -11,6 +11,7 @@ import {edgeNotchPath, cardPath} from './shape.js';
 import {drawGlyph} from './glyphs.js';
 import {resetText, elapsedText, percentText} from './copy.js';
 import {ClaudeSessionMonitor, summarize} from './sessions.js';
+import {loadArchive, saveArchive} from './archive.js';
 
 // The motion vocabulary (NotchMotion.swift), as Clutter modes. Springs are
 // approximated: EASE_OUT_BACK gives the unfold its single soft overshoot.
@@ -24,7 +25,12 @@ const Motion = {
     stagger: index => Math.min(index * 45, 180),
 };
 
-const STALE_AFTER = 20 * 1000;    // ms: unfolding re-reads anything older
+// Reading cadence (UsageStore.swift): a provider is read every timer tick
+// only while its tool is busy, otherwise only when nothing has been attempted
+// for IDLE_REFRESH. Unfolding never reads. A reading older than STALE_AFTER
+// is still shown, dimmed.
+const IDLE_REFRESH = 5 * 60 * 1000;
+const STALE_AFTER = 15 * 60 * 1000;
 const POLL_INTERVAL = 60;         // ms: pointer tracking while unfolded
 const LEAVE_GRACE = 250;          // ms: the pointer has to cross the gap to the card
 const CARD_TICK = 30;             // seconds between relative-time refreshes
@@ -418,9 +424,10 @@ class Card extends St.Widget {
                 add(spacer(L.barToUsed));
                 add(text(`${percentText(window.usedFraction)} Used`));
             });
-            if (state.status !== 'ok') {
+            if (state.error) {
+                const lead = state.error.kind === 'rateLimited' ? 'Waiting for the API' : 'Couldn\'t refresh';
                 add(spacer(L.blockSpacing));
-                add(text(`Couldn't refresh · last read ${elapsedText(new Date(snapshot.fetchedAt), now)} ago`,
+                add(text(`${lead} · last read ${elapsedText(new Date(snapshot.fetchedAt), now)} ago`,
                     {color: Palette.textSecondary}));
             }
         }
@@ -480,8 +487,9 @@ export class Notch {
         this._openDelay = Math.max(0, openDelay);
 
         this._states = new Map(providers.map(p => [p.id, {
-            snapshot: null, status: 'error', error: null, fetching: false,
+            snapshot: null, status: 'error', error: null, fetching: false, attemptedAt: 0,
         }]));
+        this._archive = {};
         this._sessions = new Map();
         this._cells = [];
         this._expanded = false;
@@ -501,6 +509,7 @@ export class Notch {
     }
 
     enable() {
+        this._restoreArchive();
         const fixed = () => new Clutter.FixedLayout();
         this._visual = new St.Widget({layout_manager: fixed(), reactive: false});
         this._shape = new ShapeArea(this._edge);
@@ -565,10 +574,10 @@ export class Notch {
         }
 
         for (const cell of this._cells)
-            cell.update(this._states.get(cell.provider.id), this._activity(cell.provider.id));
-        this._refreshAll();
+            cell.update(this._stateOf(cell.provider.id), this._activity(cell.provider.id));
+        this._refreshAll('initial');
         this._refreshTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, this._refreshInterval, () => {
-            this._refreshAll();
+            this._refreshAll('tick');
             return GLib.SOURCE_CONTINUE;
         });
 
@@ -757,7 +766,6 @@ export class Notch {
         });
         this._updateHitBox();
         this._startPolling();
-        this._refreshAll(STALE_AFTER);
     }
 
     _collapse() {
@@ -876,7 +884,7 @@ export class Notch {
 
     _populateCard() {
         const provider = this._cells[this._hoverIndex].provider;
-        this._card.populate(provider, this._states.get(provider.id), this._activity(provider.id));
+        this._card.populate(provider, this._stateOf(provider.id), this._activity(provider.id));
     }
 
     _placeCard(index, animate) {
@@ -927,13 +935,50 @@ export class Notch {
         return summarize(this._sessions.get(providerID));
     }
 
-    _refreshAll(olderThan = 0) {
+    // The state with its status brought up to date by age, so a reading
+    // crosses into 'stale' without anything having been fetched.
+    _stateOf(providerID, now = Date.now()) {
+        const state = this._states.get(providerID);
+        if (!state.snapshot)
+            state.status = 'error';
+        else
+            state.status = now - state.snapshot.fetchedAt < STALE_AFTER ? 'ok' : 'stale';
+        return state;
+    }
+
+    _restoreArchive() {
+        this._archive = loadArchive();
+        for (const provider of this._providers) {
+            const entry = this._archive[provider.id];
+            if (!entry)
+                continue;
+            const state = this._states.get(provider.id);
+            state.snapshot = entry.snapshot;
+            // The remembered reading counts as the last attempt: it is what
+            // decides whether the first read can wait.
+            state.attemptedAt = entry.snapshot?.fetchedAt ?? 0;
+            provider.backoffUntil = entry.backoffUntil;
+            this._stateOf(provider.id);
+        }
+    }
+
+    _busy(providerID) {
+        const state = this._activity(providerID)?.state;
+        return state === 'working' || state === 'waiting';
+    }
+
+    // The first read at enable() ignores activity: a remembered reading
+    // that is still fresh is good enough to start from.
+    _refreshAll(reason) {
         const now = Date.now();
         for (const provider of this._providers) {
             const state = this._states.get(provider.id);
-            if (olderThan && state.snapshot && now - state.snapshot.fetchedAt < olderThan)
-                continue;
-            this._refresh(provider).catch(e => console.error(`codenotch: ${e}`));
+            const before = state.status;
+            const due = now - state.attemptedAt >= IDLE_REFRESH;
+            if (due || (reason === 'tick' && this._busy(provider.id)))
+                this._refresh(provider).catch(e => console.error(`codenotch: ${e}`));
+            else if (this._stateOf(provider.id, now).status !== before)
+                this._applyState(provider.id);
         }
     }
 
@@ -942,19 +987,35 @@ export class Notch {
         if (state.fetching)
             return;
         state.fetching = true;
+        state.attemptedAt = Date.now();
+        let read = false;
         try {
             const snapshot = await provider.fetch();
             state.snapshot = {...snapshot, fetchedAt: Date.now()};
-            state.status = 'ok';
             state.error = null;
+            read = true;
         } catch (e) {
             state.error = e;
-            state.status = state.snapshot ? 'stale' : 'error';
             console.warn(`codenotch: ${provider.id}: ${e.message}`);
         } finally {
             state.fetching = false;
         }
+        this._remember(provider, read);
         this._applyState(provider.id);
+    }
+
+    _remember(provider, read) {
+        const entry = this._archive[provider.id] ??= {snapshot: null, backoffUntil: null};
+        const state = this._states.get(provider.id);
+        let changed = read;
+        if (read)
+            entry.snapshot = state.snapshot;
+        if (entry.backoffUntil !== provider.backoffUntil) {
+            entry.backoffUntil = provider.backoffUntil;
+            changed = true;
+        }
+        if (changed)
+            saveArchive(this._archive);
     }
 
     _applyState(providerID) {
@@ -963,7 +1024,7 @@ export class Notch {
         const index = this._cells.findIndex(c => c.provider.id === providerID);
         if (index < 0)
             return;
-        this._cells[index].update(this._states.get(providerID), this._activity(providerID));
+        this._cells[index].update(this._stateOf(providerID), this._activity(providerID));
         if (this._cardShown && this._hoverIndex === index) {
             this._populateCard();
             this._placeCard(index, false);

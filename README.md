@@ -25,6 +25,11 @@ credential exists.
 Tokens are read only, never refreshed or written. If one expires, the card
 says so and the tool itself refreshes it on its next run.
 
+Usage is read every minute only while a tool is active and every five
+minutes otherwise; unfolding the notch never triggers a read. The last
+reading is remembered in `~/.cache/codenotch/` and shown (dimmed after
+fifteen minutes) when a read fails.
+
 ## Install
 
 ```sh

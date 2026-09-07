@@ -18,6 +18,15 @@ export class CodexProvider {
         this._retryNoEarlierThan = 0;
     }
 
+    // The 429 deadline, exposed so the notch can remember it across restarts.
+    get backoffUntil() {
+        return this._retryNoEarlierThan || null;
+    }
+
+    set backoffUntil(deadline) {
+        this._retryNoEarlierThan = deadline ?? 0;
+    }
+
     available() {
         return exists(this._authPath);
     }
