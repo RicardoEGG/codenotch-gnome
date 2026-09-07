@@ -1,5 +1,5 @@
 {
-  "uuid": "codenotch@rick",
+  "uuid": "codenotch@codenotch-gnome",
   "name": "Codenotch",
   "description": "A black notch welded to the screen edge showing how much of each coding assistant's usage limit you have burned. GNOME port of vinzdg/codenotch.",
   "shell-version": [

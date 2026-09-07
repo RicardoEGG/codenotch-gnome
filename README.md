@@ -50,8 +50,8 @@ fifteen minutes) when a read fails.
 ## Install
 
 ```sh
-ln -s "$PWD/codenotch@rick" ~/.local/share/gnome-shell/extensions/codenotch@rick
-gnome-extensions enable codenotch@rick
+ln -s "$PWD/codenotch@codenotch-gnome" ~/.local/share/gnome-shell/extensions/codenotch@codenotch-gnome
+gnome-extensions enable codenotch@codenotch-gnome
 ```
 
 On Wayland the shell only discovers new extension directories at login, so
@@ -72,7 +72,7 @@ Requires GNOME Shell 48 or newer.
 
 ## Preferences
 
-Open them from the Extensions app or with `gnome-extensions prefs codenotch@rick`.
+Open them from the Extensions app or with `gnome-extensions prefs codenotch@codenotch-gnome`.
 
 - **Onde mostrar**: the edge notch, an indicator in the top panel — each
   tool's logo and percent, next to the battery; hovering it drops a notch out
@@ -107,7 +107,7 @@ NESTED_SETTINGS=$'edge=\'top\'\nopacity=0.7' ./dev/nested.sh dev/out-top
 ```
 
 The schema in `schemas/` must be compiled after editing:
-`glib-compile-schemas codenotch@rick/schemas/`.
+`glib-compile-schemas codenotch@codenotch-gnome/schemas/`.
 
 Layout constants live in `layout.js` and are the design frame's measurements
 scaled so the ring is 44 px; change nothing there without a ruler.
