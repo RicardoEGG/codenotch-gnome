@@ -48,8 +48,14 @@ export default class CodenotchExtension extends Extension {
         this._teardown();
     }
 
+    // Must never throw: it runs from disable(), where the shell has no
+    // recovery beyond putting the extension in ERROR state.
     _teardown() {
-        this._app?.destroy();
+        try {
+            this._app?.destroy();
+        } catch (e) {
+            console.error(`codenotch: teardown failed: ${e}\n${e.stack ?? ''}`);
+        }
         this._app = null;
         this._mods = null;
     }
@@ -129,9 +135,23 @@ export default class CodenotchExtension extends Extension {
         });
     }
 
+    // A build that throws partway (a bad setting, a provider erroring out of
+    // its constructor) must not leave a half-built app referenced: the next
+    // `disable()` would call destroy() on it and, absent the guards in each
+    // view, could put the extension in ERROR state until the next login.
     _build() {
-        this._app?.destroy();
-        this._app = this._mods.app.createApp(this._settings);
+        try {
+            this._app?.destroy();
+        } catch (e) {
+            console.error(`codenotch: destroy before rebuild failed: ${e}\n${e.stack ?? ''}`);
+        }
+        this._app = null;
+        try {
+            this._app = this._mods.app.createApp(this._settings);
+        } catch (e) {
+            this._app = null;
+            console.error(`codenotch: build failed: ${e}\n${e.stack ?? ''}`);
+        }
     }
 
     // Screenshots of each state, for the headless test harness.

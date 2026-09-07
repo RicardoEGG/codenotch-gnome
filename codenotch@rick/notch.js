@@ -514,6 +514,10 @@ export class Notch {
         this._cardTimer = 0;
         this._openTimer = 0;
         this._pinned = alwaysOpen;
+        // Only true once both actors have actually gone through addChrome —
+        // enable() can throw before reaching that point, and destroy() must
+        // not ask the layout manager to drop chrome it never took.
+        this._chromeAdded = false;
     }
 
     get cellCount() {
@@ -551,6 +555,7 @@ export class Notch {
                 affectsStruts: false, trackFullscreen: this._hideInFullscreen,
             });
         }
+        this._chromeAdded = true;
         Main.layoutManager.uiGroup.add_child(this._card);
 
         this._hit.connect('enter-event', () => {
@@ -594,20 +599,30 @@ export class Notch {
         this._cardTimer = 0;
     }
 
+    // Idempotent and null-safe: a load that dies mid-enable() can leave this
+    // called on a half-built notch, and a second call (stage teardown racing
+    // disable()) must be a quiet no-op rather than a second crash.
     destroy() {
         this._stopTimers();
         if (this._storeWatcher)
-            this._store.disconnect(this._storeWatcher);
+            this._store?.disconnect(this._storeWatcher);
         this._storeWatcher = 0;
         if (this._monitorsChangedId)
             Main.layoutManager.disconnect(this._monitorsChangedId);
         if (this._workareasChangedId)
             global.display.disconnect(this._workareasChangedId);
         this._monitorsChangedId = this._workareasChangedId = 0;
-        for (const actor of [this._hit, this._visual])
-            Main.layoutManager.removeChrome(actor);
-        for (const actor of [this._card, this._hit, this._visual])
-            actor.destroy();
+        if (this._chromeAdded) {
+            for (const actor of [this._hit, this._visual]) {
+                if (actor)
+                    Main.layoutManager.removeChrome(actor);
+            }
+        }
+        this._chromeAdded = false;
+        for (const actor of [this._card, this._hit, this._visual]) {
+            if (actor)
+                actor.destroy();
+        }
         this._card = this._hit = this._visual = null;
         this._cells = [];
     }

@@ -30,73 +30,93 @@ export function createApp(settings) {
     Appearance.color = settings.get_string('color');
     Appearance.opacity = settings.get_double('opacity');
 
-    // Only the tools that are signed in on this machine get a cell.
-    const providers = [new ClaudeProvider(), new CodexProvider(), new AntigravityProvider()]
-        .filter(p => p.available());
-    const store = new UsageStore(providers, {refreshInterval: settings.get_int('refresh-interval')});
-    // Started before the views so they draw the remembered reading at once.
-    store.start();
-
-    const surface = settings.get_string('surface');
-    const hideInFullscreen = settings.get_boolean('hide-in-fullscreen');
-    const openDelay = settings.get_int('open-delay');
+    // Everything built here is tracked as it is created, not once it is
+    // known-good: if any step throws partway (a bad setting, a provider
+    // erroring out of its constructor), the catch below tears down exactly
+    // what got built instead of leaving it referenced by nothing but the
+    // stack that just unwound.
+    let store = null;
     const views = [];
-    let edgeNotch = null;
-    let dropNotch = null;
+    try {
+        // Only the tools that are signed in on this machine get a cell.
+        const providers = [new ClaudeProvider(), new CodexProvider(), new AntigravityProvider()]
+            .filter(p => p.available());
+        store = new UsageStore(providers, {refreshInterval: settings.get_int('refresh-interval')});
+        // Started before the views so they draw the remembered reading at once.
+        store.start();
 
-    if (surface !== 'panel') {
-        edgeNotch = new Notch(store, {
-            edge: settings.get_string('edge'),
-            position: settings.get_double('position'),
-            alwaysOpen: settings.get_boolean('always-open'),
-            hideInFullscreen,
-            hotZone: settings.get_int('hot-zone'),
-            openDelay,
-        });
-        edgeNotch.enable();
-        views.push(edgeNotch);
-    }
+        const surface = settings.get_string('surface');
+        const hideInFullscreen = settings.get_boolean('hide-in-fullscreen');
+        const openDelay = settings.get_int('open-delay');
+        let edgeNotch = null;
+        let dropNotch = null;
 
-    if (surface !== 'notch') {
-        const indicator = new PanelIndicator(store, {openDelay});
-        // A previous load that died without tearing down would keep the role.
-        Main.panel.statusArea[PANEL_ROLE]?.destroy();
-        Main.panel.addToStatusArea(PANEL_ROLE, indicator, 0, 'right');
-        dropNotch = new Notch(store, {
-            edge: 'top',
-            anchor: indicator.centerX(),
-            flare: 0,
-            restHidden: true,
-            restLength: () => indicator.width,
-            edgeCoord: panelBottom,
-            extraRects: () => [indicator.rect()],
-            hideInFullscreen,
-        });
-        dropNotch.enable();
-        indicator.setNotch(dropNotch);
-        views.push(dropNotch, indicator);
-    }
+        if (surface !== 'panel') {
+            edgeNotch = new Notch(store, {
+                edge: settings.get_string('edge'),
+                position: settings.get_double('position'),
+                alwaysOpen: settings.get_boolean('always-open'),
+                hideInFullscreen,
+                hotZone: settings.get_int('hot-zone'),
+                openDelay,
+            });
+            views.push(edgeNotch);
+            edgeNotch.enable();
+        }
 
-    // Screenshots are taken of whichever surface is the point of the run.
-    const debugTarget = surface === 'panel' ? dropNotch : edgeNotch;
+        if (surface !== 'notch') {
+            const indicator = new PanelIndicator(store, {openDelay});
+            views.push(indicator);
+            // A previous load that died without tearing down would keep the role.
+            Main.panel.statusArea[PANEL_ROLE]?.destroy();
+            Main.panel.addToStatusArea(PANEL_ROLE, indicator, 0, 'right');
+            dropNotch = new Notch(store, {
+                edge: 'top',
+                anchor: indicator.centerX(),
+                flare: 0,
+                restHidden: true,
+                restLength: () => indicator.width,
+                edgeCoord: panelBottom,
+                extraRects: () => [indicator.rect()],
+                hideInFullscreen,
+            });
+            views.push(dropNotch);
+            dropNotch.enable();
+            indicator.setNotch(dropNotch);
+        }
 
-    return {
-        get cellCount() {
-            return debugTarget?.cellCount ?? 0;
-        },
-        destroy() {
-            for (const view of views)
+        // Screenshots are taken of whichever surface is the point of the run.
+        const debugTarget = surface === 'panel' ? dropNotch : edgeNotch;
+
+        return {
+            get cellCount() {
+                return debugTarget?.cellCount ?? 0;
+            },
+            destroy() {
+                for (const view of views)
+                    view.destroy();
+                store.destroy();
+                http.shutdown();
+            },
+            debugExpand() {
+                debugTarget?.debugExpand();
+            },
+            debugHover(index) {
+                debugTarget?.debugHover(index);
+            },
+        };
+    } catch (e) {
+        for (const view of views) {
+            try {
                 view.destroy();
-            store.destroy();
-            http.shutdown();
-        },
-        debugExpand() {
-            debugTarget?.debugExpand();
-        },
-        debugHover(index) {
-            debugTarget?.debugHover(index);
-        },
-    };
+            } catch (e2) {
+                console.error(`codenotch: cleanup after failed build also failed: ${e2}\n${e2.stack ?? ''}`);
+            }
+        }
+        store?.destroy();
+        http.shutdown();
+        throw e;
+    }
 }
 
 // For a load the loader abandons before it ever builds an app.

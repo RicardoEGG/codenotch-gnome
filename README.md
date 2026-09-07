@@ -56,7 +56,9 @@ loader: it copies the source into a fresh directory under
 `~/.cache/codenotch/live/` and imports from there, so the "Recarregar
 extensão" button at the bottom of the preferences (or `dev/reload.sh`)
 reloads everything except `extension.js` and `prefs.js` themselves. Those two
-still need a re-login (or `Alt+F2`, `r` on X11).
+still need a re-login (or `Alt+F2`, `r` on X11). The loader stages the
+working tree exactly as it is on disk, so reload after committing (or at
+least after saving a consistent state), not while files are mid-edit.
 
 Requires GNOME Shell 48 or newer.
 
