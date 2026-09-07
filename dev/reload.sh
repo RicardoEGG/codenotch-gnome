@@ -2,8 +2,8 @@
 # Asks the running shell to reload the extension's code (everything except
 # extension.js and prefs.js) by bumping the key the loader listens to.
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-if [ -n "$(git -C "$ROOT" status --porcelain -- codenotch@codenotch-gnome 2>/dev/null)" ]; then
+if [ -n "$(git -C "$ROOT" status --porcelain -- codenotch-gnome 2>/dev/null)" ]; then
     echo "warning: working tree has uncommitted changes; the shell will load them as they are" >&2
 fi
-GSETTINGS_SCHEMA_DIR="$ROOT/codenotch@codenotch-gnome/schemas" \
+GSETTINGS_SCHEMA_DIR="$ROOT/codenotch-gnome/schemas" \
     gsettings set org.gnome.shell.extensions.codenotch reload-token "$(date +%s)"
