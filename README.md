@@ -50,9 +50,12 @@ fifteen minutes) when a read fails.
 ## Install
 
 ```sh
-ln -s "$PWD/codenotch-gnome" ~/.local/share/gnome-shell/extensions/codenotch-gnome
-gnome-extensions enable codenotch-gnome
+./dev/install.sh
 ```
+
+This copies the extension into `~/.local/share/gnome-shell/extensions/`, so
+the checkout can be moved or deleted afterwards. Run it again after pulling
+changes, then reload from the preferences window.
 
 On Wayland the shell only discovers new extension directories at login, so
 the first enable may need a log out and back in.
