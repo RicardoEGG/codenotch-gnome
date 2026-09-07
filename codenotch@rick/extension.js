@@ -6,9 +6,9 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 Gio._promisify(Shell.Screenshot.prototype, 'screenshot', 'screenshot_finish');
 
-// Modules the notch is built from. Everything else is reached through their
-// static imports, which resolve relative to wherever these were loaded from.
-const MODULES = ['notch.js', 'layout.js', 'providers/claude.js', 'providers/codex.js', 'providers/http.js'];
+// The one module the loader knows. Everything else is reached through its
+// static imports, which resolve relative to wherever it was loaded from.
+const MODULES = ['app.js'];
 const LOADER_FILES = ['extension.js', 'prefs.js'];
 
 // The shell never re-imports a module it has already seen, so editing the
@@ -21,7 +21,7 @@ export default class CodenotchExtension extends Extension {
         this._enabled = true;
         this._generation = 0;
         this._mods = null;
-        this._notch = null;
+        this._app = null;
         this._rebuildTimer = 0;
         this._settings = this.getSettings();
         this._settingsChangedId = this._settings.connect('changed', (_s, key) => this._onSettingsChanged(key));
@@ -49,9 +49,8 @@ export default class CodenotchExtension extends Extension {
     }
 
     _teardown() {
-        this._notch?.destroy();
-        this._notch = null;
-        this._mods?.http.shutdown();
+        this._app?.destroy();
+        this._app = null;
         this._mods = null;
     }
 
@@ -77,16 +76,10 @@ export default class CodenotchExtension extends Extension {
         this._pruneStage(dir);
 
         if (!this._enabled || generation !== this._generation) {
-            mods['providers/http.js'].shutdown();
+            mods['app.js'].shutdown();
             return;
         }
-        this._mods = {
-            notch: mods['notch.js'],
-            layout: mods['layout.js'],
-            claude: mods['providers/claude.js'],
-            codex: mods['providers/codex.js'],
-            http: mods['providers/http.js'],
-        };
+        this._mods = {app: mods['app.js']};
         this._build();
     }
 
@@ -137,30 +130,8 @@ export default class CodenotchExtension extends Extension {
     }
 
     _build() {
-        const s = this._settings;
-        const {notch, layout, claude, codex} = this._mods;
-        this._notch?.destroy();
-
-        layout.configureLayout({
-            scale: s.get_double('scale'),
-            showLabels: s.get_boolean('show-labels'),
-            textScale: s.get_double('text-scale'),
-        });
-        layout.Appearance.color = s.get_string('color');
-        layout.Appearance.opacity = s.get_double('opacity');
-
-        // Only the tools that are signed in on this machine get a cell.
-        const providers = [new claude.ClaudeProvider(), new codex.CodexProvider()].filter(p => p.available());
-        this._notch = new notch.Notch(providers, {
-            edge: s.get_string('edge'),
-            position: s.get_double('position'),
-            alwaysOpen: s.get_boolean('always-open'),
-            hideInFullscreen: s.get_boolean('hide-in-fullscreen'),
-            refreshInterval: s.get_int('refresh-interval'),
-            hotZone: s.get_int('hot-zone'),
-            openDelay: s.get_int('open-delay'),
-        });
-        this._notch.enable();
+        this._app?.destroy();
+        this._app = this._mods.app.createApp(this._settings);
     }
 
     // Screenshots of each state, for the headless test harness.
@@ -182,16 +153,16 @@ export default class CodenotchExtension extends Extension {
 
         await this._loading;
         await delay(5000);
-        if (this._shotCancelled || !this._notch)
+        if (this._shotCancelled || !this._app)
             return;
         Main.overview.hide();
         await delay(1000);
         await shoot('rest');
-        this._notch.debugExpand();
+        this._app.debugExpand();
         await delay(1500);
         await shoot('open');
-        for (let i = 0; i < (this._notch?.cellCount ?? 0); i++) {
-            this._notch.debugHover(i);
+        for (let i = 0; i < (this._app?.cellCount ?? 0); i++) {
+            this._app.debugHover(i);
             await delay(1200);
             await shoot(`hover${i}`);
         }

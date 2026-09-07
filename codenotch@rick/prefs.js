@@ -11,6 +11,30 @@ const EDGES = [
     ['bottom', 'Embaixo'],
 ];
 
+const SURFACES = [
+    ['notch', 'Só o notch na borda'],
+    ['panel', 'Só a barra superior'],
+    ['both', 'Notch e barra superior'],
+];
+
+// An Adw row picking one nick out of a list, kept in step with the key both
+// ways.
+function comboRow(settings, key, options, {title, subtitle}) {
+    const row = new Adw.ComboRow({
+        title, subtitle,
+        model: Gtk.StringList.new(options.map(([, label]) => label)),
+    });
+    const sync = () => {
+        const index = Math.max(0, options.findIndex(([nick]) => nick === settings.get_string(key)));
+        if (row.selected !== index)
+            row.selected = index;
+    };
+    sync();
+    row.connect('notify::selected', () => settings.set_string(key, options[row.selected][0]));
+    settings.connect(`changed::${key}`, sync);
+    return row;
+}
+
 // An Adw row carrying a horizontal slider bound to a double key.
 function sliderRow(settings, key, {title, subtitle, min, max, step, format}) {
     const row = new Adw.ActionRow({title, subtitle});
@@ -75,24 +99,20 @@ export default class CodenotchPreferences extends ExtensionPreferences {
         // Where it lives
         const position = new Adw.PreferencesGroup({
             title: 'Posição',
-            description: 'Em qual borda da tela o notch fica soldado, e onde ao longo dela.',
+            description: 'Onde as leituras aparecem: um notch soldado a uma borda da tela, ' +
+                'um indicador na barra superior, ou os dois.',
         });
         page.add(position);
 
-        const edgeRow = new Adw.ComboRow({
+        position.add(comboRow(settings, 'surface', SURFACES, {
+            title: 'Onde mostrar',
+            subtitle: 'Na barra, o notch desce ao passar o ponteiro pelo indicador',
+        }));
+
+        position.add(comboRow(settings, 'edge', EDGES, {
             title: 'Borda',
             subtitle: 'O notch se abre para dentro da tela a partir desta borda',
-            model: Gtk.StringList.new(EDGES.map(([, label]) => label)),
-        });
-        const syncEdge = () => {
-            const index = Math.max(0, EDGES.findIndex(([nick]) => nick === settings.get_string('edge')));
-            if (edgeRow.selected !== index)
-                edgeRow.selected = index;
-        };
-        syncEdge();
-        edgeRow.connect('notify::selected', () => settings.set_string('edge', EDGES[edgeRow.selected][0]));
-        settings.connect('changed::edge', syncEdge);
-        position.add(edgeRow);
+        }));
 
         position.add(sliderRow(settings, 'position', {
             title: 'Posição ao longo da borda',

@@ -55,6 +55,11 @@ Requires GNOME Shell 48 or newer.
 
 Open them from the Extensions app or with `gnome-extensions prefs codenotch@rick`.
 
+- **Onde mostrar**: the edge notch, an indicator in the top panel — each
+  tool's logo and percent, next to the battery; hovering it drops a notch out
+  of the panel with the rings and the card, a click pins it open and Escape or
+  another click closes it — or both at once. The readings are shared, so a
+  second surface costs no extra API calls.
 - **Posição**: which screen edge the notch is welded to (right, left, top,
   bottom) and where along that edge it sits. A top notch hangs below the
   panel; a bottom one rests on the dock.

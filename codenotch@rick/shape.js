@@ -33,31 +33,32 @@ export function notchPath(cr, x, y, depth, length, flare = L.curlRadius,
 
 // The path is only ever written once, for the right edge, and then
 // transformed onto whichever edge it is actually on. Draws the shape flush
-// with `edge` of a `w` x `h` area, centred along it.
-export function edgeNotchPath(cr, edge, w, h, depth, length) {
+// with `edge` of a `w` x `h` area, centred along it. A `flare` of 0 drops the
+// inverse corners, leaving a tab that grows straight out of the edge.
+export function edgeNotchPath(cr, edge, w, h, depth, length, flare = L.curlRadius) {
     cr.save();
     switch (edge) {
     case 'right':
-        notchPath(cr, w - depth, (h - length) / 2, depth, length);
+        notchPath(cr, w - depth, (h - length) / 2, depth, length, flare);
         break;
     case 'left':
         // Mirrored: the flares point the other way.
         cr.translate(depth, 0);
         cr.scale(-1, 1);
-        notchPath(cr, 0, (h - length) / 2, depth, length);
+        notchPath(cr, 0, (h - length) / 2, depth, length, flare);
         break;
     case 'top':
         // Quarter turn, bezel to the top: (across, along) -> (along, depth - across).
         cr.translate(0, depth);
         cr.rotate(-Math.PI / 2);
-        notchPath(cr, 0, (w - length) / 2, depth, length);
+        notchPath(cr, 0, (w - length) / 2, depth, length, flare);
         break;
     case 'bottom':
         // Quarter turn the other way, bezel to the bottom.
         cr.translate(0, h - depth);
         cr.scale(-1, 1);
         cr.rotate(Math.PI / 2);
-        notchPath(cr, 0, (w - length) / 2, depth, length);
+        notchPath(cr, 0, (w - length) / 2, depth, length, flare);
         break;
     }
     cr.restore();

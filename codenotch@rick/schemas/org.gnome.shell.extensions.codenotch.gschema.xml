@@ -6,7 +6,16 @@
     <value nick="top" value="2"/>
     <value nick="bottom" value="3"/>
   </enum>
+  <enum id="org.gnome.shell.extensions.codenotch.surface">
+    <value nick="notch" value="0"/>
+    <value nick="panel" value="1"/>
+    <value nick="both" value="2"/>
+  </enum>
   <schema id="org.gnome.shell.extensions.codenotch" path="/org/gnome/shell/extensions/codenotch/">
+    <key name="surface" enum="org.gnome.shell.extensions.codenotch.surface">
+      <default>'notch'</default>
+      <summary>Where the readings are shown: the edge notch, the top panel, or both</summary>
+    </key>
     <key name="edge" enum="org.gnome.shell.extensions.codenotch.edge">
       <default>'right'</default>
       <summary>Screen edge the notch is welded to</summary>

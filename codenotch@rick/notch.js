@@ -10,8 +10,7 @@ import {L, Palette, Appearance, setColor, band, bandColor,
 import {edgeNotchPath, cardPath} from './shape.js';
 import {drawGlyph} from './glyphs.js';
 import {resetText, elapsedText, percentText} from './copy.js';
-import {ClaudeSessionMonitor, summarize} from './sessions.js';
-import {loadArchive, saveArchive} from './archive.js';
+import {headlineOf} from './store.js';
 
 // The motion vocabulary (NotchMotion.swift), as Clutter modes. Springs are
 // approximated: EASE_OUT_BACK gives the unfold its single soft overshoot.
@@ -25,12 +24,6 @@ const Motion = {
     stagger: index => Math.min(index * 45, 180),
 };
 
-// Reading cadence (UsageStore.swift): a provider is read every timer tick
-// only while its tool is busy, otherwise only when nothing has been attempted
-// for IDLE_REFRESH. Unfolding never reads. A reading older than STALE_AFTER
-// is still shown, dimmed.
-const IDLE_REFRESH = 5 * 60 * 1000;
-const STALE_AFTER = 15 * 60 * 1000;
 const POLL_INTERVAL = 60;         // ms: pointer tracking while unfolded
 const LEAVE_GRACE = 250;          // ms: the pointer has to cross the gap to the card
 const CARD_TICK = 30;             // seconds between relative-time refreshes
@@ -38,6 +31,11 @@ const EDGE_MARGIN = 8;            // px the card keeps from the work area's ends
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// Options a caller may hand over as a function instead of a number, when the
+// value only settles after the notch exists — the panel's height, or the
+// indicator the drop notch hangs from.
+const value = v => typeof v === 'function' ? v() : v;
 
 // Which side of the card the tail is on, for a notch on `edge`.
 const TAIL_SIDE = {right: 'right', left: 'left', top: 'top', bottom: 'bottom'};
@@ -48,14 +46,18 @@ function doubleSpec(name, min, max, initial) {
 }
 
 // The notch body: pill at rest, unfolding to the full shape as `progress`
-// goes 0 -> 1. Drawn flush with the actor's edge, centred along it.
+// goes 0 -> 1. Drawn flush with the actor's edge, centred along it. A rest
+// depth of 0 makes the fold vanish instead of leaving a pill behind.
 const ShapeArea = GObject.registerClass({
     Properties: {'progress': doubleSpec('progress', -1, 2, 0)},
 }, class ShapeArea extends St.DrawingArea {
-    _init(edge) {
+    _init(edge, {flare = L.curlRadius, restDepth = L.pillWidth, restLength = L.pillHeight} = {}) {
         super._init({reactive: false});
         this._edge = edge;
         this._progress = 0;
+        this.flare = flare;
+        this.restDepth = restDepth;
+        this.restLength = restLength;
         this.fullLength = L.pillHeight;
         this.fullDepth = L.bodyDepth;
     }
@@ -76,9 +78,9 @@ const ShapeArea = GObject.registerClass({
         const cr = this.get_context();
         const [w, h] = this.get_surface_size();
         const p = this._progress;
-        const depth = lerp(L.pillWidth, this.fullDepth, p);
-        const length = lerp(L.pillHeight, this.fullLength, p);
-        edgeNotchPath(cr, this._edge, w, h, depth, length);
+        const depth = lerp(this.restDepth, this.fullDepth, p);
+        const length = lerp(this.restLength, this.fullLength, p);
+        edgeNotchPath(cr, this._edge, w, h, depth, length, this.flare);
         setColor(cr, Appearance.color, Appearance.opacity);
         cr.fill();
         cr.$dispose();
@@ -263,12 +265,6 @@ class Cell extends St.Widget {
         this._activity.setState(activity?.state === 'idle' ? null : activity?.state ?? null);
     }
 });
-
-function headlineOf(snapshot) {
-    if (!snapshot || snapshot.windows.length === 0)
-        return null;
-    return snapshot.windows.find(w => w.id === snapshot.headlineID) ?? snapshot.windows[0];
-}
 
 // The hover card: provider glyph and title, one block per limit window, and
 // the running sessions underneath (TooltipCard.swift).
@@ -470,38 +466,41 @@ class Card extends St.Widget {
     }
 });
 
+// A view onto a UsageStore: the black shape, its rings and the hover card.
+// Welded to a screen edge by default; `restHidden` and the geometry overrides
+// turn the same machinery into a tab that drops out of the top panel.
 export class Notch {
-    constructor(providers, {
-        edge = 'right', position = 0.5, alwaysOpen = false,
-        hideInFullscreen = true, refreshInterval = 60,
-        hotZone = 4, openDelay = 150,
+    constructor(store, {
+        edge = 'right', position = 0.5, anchor = null, alwaysOpen = false,
+        hideInFullscreen = true, hotZone = 4, openDelay = 150,
+        flare = L.curlRadius, restHidden = false, restLength = L.pillHeight,
+        edgeCoord = null, extraRects = null,
     } = {}) {
-        this._providers = providers;
+        this._store = store;
+        this._providers = store.providers;
         this._edge = TAIL_SIDE[edge] ? edge : 'right';
         this._vertical = this._edge === 'left' || this._edge === 'right';
         this._position = clamp(position, 0, 1);
+        this._anchor = anchor;
         this._alwaysOpen = alwaysOpen;
         this._hideInFullscreen = hideInFullscreen;
-        this._refreshInterval = Math.max(15, refreshInterval);
         this._hotZone = Math.max(1, hotZone);
         this._openDelay = Math.max(0, openDelay);
+        this._flare = flare;
+        this._restHidden = restHidden;
+        this._restLength = restLength;
+        this._edgeCoordOption = edgeCoord;
+        this._extraRects = extraRects;
 
-        this._states = new Map(providers.map(p => [p.id, {
-            snapshot: null, status: 'error', error: null, fetching: false, attemptedAt: 0,
-        }]));
-        this._archive = {};
-        this._sessions = new Map();
         this._cells = [];
         this._expanded = false;
         this._hoverIndex = -1;
         this._cardShown = false;
         this._leaveAt = 0;
         this._pollTimer = 0;
-        this._refreshTimer = 0;
         this._cardTimer = 0;
         this._openTimer = 0;
-        this._sessionMonitors = [];
-        this.pinned = alwaysOpen;
+        this._pinned = alwaysOpen;
     }
 
     get cellCount() {
@@ -509,10 +508,13 @@ export class Notch {
     }
 
     enable() {
-        this._restoreArchive();
         const fixed = () => new Clutter.FixedLayout();
         this._visual = new St.Widget({layout_manager: fixed(), reactive: false});
-        this._shape = new ShapeArea(this._edge);
+        this._shape = new ShapeArea(this._edge, {
+            flare: this._flare,
+            restDepth: this._restHidden ? 0 : L.pillWidth,
+            restLength: this._restHidden ? value(this._restLength) : L.pillHeight,
+        });
         this._cellsGroup = new St.Widget({layout_manager: fixed(), reactive: false});
         this._visual.add_child(this._shape);
         this._visual.add_child(this._cellsGroup);
@@ -560,26 +562,12 @@ export class Notch {
         // The stage can tear the actors down without disable() being called.
         this._visual.connect('destroy', () => this._stopTimers());
         this._relayout();
+        if (this._restHidden && !this._alwaysOpen)
+            this._visual.hide();
 
-        for (const provider of this._providers) {
-            if (!provider.tracksSessions)
-                continue;
-            const monitor = new ClaudeSessionMonitor(provider.sessionsDir, sessions => {
-                this._sessions.set(provider.id, sessions);
-                this._applyState(provider.id);
-            });
-            monitor.start();
-            this._sessions.set(provider.id, monitor.sessions);
-            this._sessionMonitors.push(monitor);
-        }
-
+        this._storeWatcher = this._store.connect(id => this._applyState(id));
         for (const cell of this._cells)
-            cell.update(this._stateOf(cell.provider.id), this._activity(cell.provider.id));
-        this._refreshAll('initial');
-        this._refreshTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, this._refreshInterval, () => {
-            this._refreshAll('tick');
-            return GLib.SOURCE_CONTINUE;
-        });
+            cell.update(this._store.stateOf(cell.provider.id), this._store.activity(cell.provider.id));
 
         if (this._alwaysOpen)
             this._expand();
@@ -588,18 +576,16 @@ export class Notch {
     _stopTimers() {
         this._stopPolling();
         this._cancelExpand();
-        if (this._refreshTimer)
-            GLib.source_remove(this._refreshTimer);
         if (this._cardTimer)
             GLib.source_remove(this._cardTimer);
-        this._refreshTimer = this._cardTimer = 0;
-        for (const monitor of this._sessionMonitors)
-            monitor.stop();
-        this._sessionMonitors = [];
+        this._cardTimer = 0;
     }
 
     destroy() {
         this._stopTimers();
+        if (this._storeWatcher)
+            this._store.disconnect(this._storeWatcher);
+        this._storeWatcher = 0;
         if (this._monitorsChangedId)
             Main.layoutManager.disconnect(this._monitorsChangedId);
         if (this._workareasChangedId)
@@ -635,12 +621,15 @@ export class Notch {
 
         const alongMin = V ? work.y : work.x;
         const alongLen = V ? work.height : work.width;
-        const centre = clamp(alongMin + this._position * alongLen,
-            alongMin + full / 2, alongMin + alongLen - full / 2);
+        // An anchor pins the shape under something else on the screen; without
+        // one it sits where the preference puts it along the edge.
+        const anchor = V ? null : value(this._anchor);
+        const wanted = Number.isFinite(anchor) ? anchor : alongMin + this._position * alongLen;
+        const centre = clamp(wanted, alongMin + full / 2, alongMin + alongLen - full / 2);
         this._shapeStart = Math.round(centre - full / 2);
         this._shapeLength = full;
         this._depth = depth;
-        this._edgeCoord = {
+        this._edgeCoord = value(this._edgeCoordOption) ?? {
             right: work.x + work.width,
             left: work.x,
             top: work.y,
@@ -654,6 +643,8 @@ export class Notch {
         this._shape.set_size(this._visual.width, this._visual.height);
         this._shape.fullLength = full;
         this._shape.fullDepth = depth;
+        if (this._restHidden)
+            this._shape.restLength = value(this._restLength);
         this._shape.queue_repaint();
         this._cellsGroup.set_size(this._visual.width, this._visual.height);
 
@@ -690,6 +681,15 @@ export class Notch {
         let along;
         let alongSize;
         let acrossSize;
+        // Nothing opens a rest-hidden notch by itself, so it keeps no hot
+        // zone. Emptied rather than hidden: the layout manager owns the
+        // visibility of tracked chrome and turns it back on when it likes.
+        if (this._restHidden && !this._expanded) {
+            this._hit.reactive = false;
+            this._hit.set_size(0, 0);
+            return;
+        }
+        this._hit.reactive = true;
         if (this._expanded) {
             along = this._shapeStart;
             alongSize = this._shapeLength;
@@ -758,6 +758,7 @@ export class Notch {
         this._expanded = true;
         this._cancelExpand();
         this._leaveAt = 0;
+        this._visual.show();
         this._shape.remove_transition('progress');
         this._shape.ease_property('progress', 1, Motion.unfold);
         this._cells.forEach((cell, i) => {
@@ -774,7 +775,13 @@ export class Notch {
         this._expanded = false;
         this._hideCard();
         this._shape.remove_transition('progress');
-        this._shape.ease_property('progress', 0, Motion.fold);
+        this._shape.ease_property('progress', 0, {
+            ...Motion.fold,
+            onComplete: () => {
+                if (this._restHidden && !this._expanded)
+                    this._visual.hide();
+            },
+        });
         for (const cell of this._cells) {
             cell.remove_all_transitions();
             cell.ease({opacity: 0, ...Motion.crossfade});
@@ -828,7 +835,11 @@ export class Notch {
             inCard = this._inside(x, y, rect);
         }
 
-        if (inNotch || inCard || this.pinned) {
+        // Whatever else counts as "still here" — the panel indicator the drop
+        // notch hangs from, which the pointer has to cross to reach it.
+        const inExtra = (this._extraRects?.() ?? []).some(rect => rect && this._inside(x, y, rect));
+
+        if (inNotch || inCard || inExtra || this._pinned) {
             this._leaveAt = 0;
             if (inNotch) {
                 const along = V ? y : x;
@@ -837,8 +848,8 @@ export class Notch {
                 if (index >= 0 && index !== this._hoverIndex)
                     this._showCard(index);
             }
-            // Always open: the card still goes away when the pointer does.
-            if (!inNotch && !inCard && this._cardShown && this._alwaysOpen && !this._debugPinned)
+            // Held open: the card still goes away when the pointer does.
+            if (!inNotch && !inCard && !inExtra && this._cardShown && !this._debugPinned)
                 this._hideCardAfterGrace();
             return;
         }
@@ -884,7 +895,7 @@ export class Notch {
 
     _populateCard() {
         const provider = this._cells[this._hoverIndex].provider;
-        this._card.populate(provider, this._stateOf(provider.id), this._activity(provider.id));
+        this._card.populate(provider, this._store.stateOf(provider.id), this._store.activity(provider.id));
     }
 
     _placeCard(index, animate) {
@@ -929,94 +940,7 @@ export class Notch {
             Gio.AppInfo.launch_default_for_uri(url, global.create_app_launch_context(0, -1));
     }
 
-    // Readings
-
-    _activity(providerID) {
-        return summarize(this._sessions.get(providerID));
-    }
-
-    // The state with its status brought up to date by age, so a reading
-    // crosses into 'stale' without anything having been fetched.
-    _stateOf(providerID, now = Date.now()) {
-        const state = this._states.get(providerID);
-        if (!state.snapshot)
-            state.status = 'error';
-        else
-            state.status = now - state.snapshot.fetchedAt < STALE_AFTER ? 'ok' : 'stale';
-        return state;
-    }
-
-    _restoreArchive() {
-        this._archive = loadArchive();
-        for (const provider of this._providers) {
-            const entry = this._archive[provider.id];
-            if (!entry)
-                continue;
-            const state = this._states.get(provider.id);
-            state.snapshot = entry.snapshot;
-            // The remembered reading counts as the last attempt: it is what
-            // decides whether the first read can wait.
-            state.attemptedAt = entry.snapshot?.fetchedAt ?? 0;
-            provider.backoffUntil = entry.backoffUntil;
-            this._stateOf(provider.id);
-        }
-    }
-
-    _busy(providerID) {
-        const state = this._activity(providerID)?.state;
-        return state === 'working' || state === 'waiting';
-    }
-
-    // The first read at enable() ignores activity: a remembered reading
-    // that is still fresh is good enough to start from.
-    _refreshAll(reason) {
-        const now = Date.now();
-        for (const provider of this._providers) {
-            const state = this._states.get(provider.id);
-            const before = state.status;
-            const due = now - state.attemptedAt >= IDLE_REFRESH;
-            if (due || (reason === 'tick' && this._busy(provider.id)))
-                this._refresh(provider).catch(e => console.error(`codenotch: ${e}`));
-            else if (this._stateOf(provider.id, now).status !== before)
-                this._applyState(provider.id);
-        }
-    }
-
-    async _refresh(provider) {
-        const state = this._states.get(provider.id);
-        if (state.fetching)
-            return;
-        state.fetching = true;
-        state.attemptedAt = Date.now();
-        let read = false;
-        try {
-            const snapshot = await provider.fetch();
-            state.snapshot = {...snapshot, fetchedAt: Date.now()};
-            state.error = null;
-            read = true;
-        } catch (e) {
-            state.error = e;
-            console.warn(`codenotch: ${provider.id}: ${e.message}`);
-        } finally {
-            state.fetching = false;
-        }
-        this._remember(provider, read);
-        this._applyState(provider.id);
-    }
-
-    _remember(provider, read) {
-        const entry = this._archive[provider.id] ??= {snapshot: null, backoffUntil: null};
-        const state = this._states.get(provider.id);
-        let changed = read;
-        if (read)
-            entry.snapshot = state.snapshot;
-        if (entry.backoffUntil !== provider.backoffUntil) {
-            entry.backoffUntil = provider.backoffUntil;
-            changed = true;
-        }
-        if (changed)
-            saveArchive(this._archive);
-    }
+    // What the store has to say
 
     _applyState(providerID) {
         if (!this._visual)
@@ -1024,23 +948,50 @@ export class Notch {
         const index = this._cells.findIndex(c => c.provider.id === providerID);
         if (index < 0)
             return;
-        this._cells[index].update(this._stateOf(providerID), this._activity(providerID));
+        this._cells[index].update(this._store.stateOf(providerID), this._store.activity(providerID));
         if (this._cardShown && this._hoverIndex === index) {
             this._populateCard();
             this._placeCard(index, false);
         }
     }
 
-    // Driven from the screenshot harness (dev/nested.sh).
+    // Driven from outside: the panel indicator, and the screenshot harness
+    // (dev/nested.sh).
+
+    open() {
+        this._expand();
+    }
+
+    close() {
+        this._collapse();
+    }
+
+    // A pinned notch stays unfolded with the pointer away; the card still
+    // goes when the pointer does.
+    setPinned(pinned) {
+        this._pinned = pinned;
+    }
+
+    get isPinned() {
+        return this._pinned;
+    }
+
+    setAnchor(x) {
+        if (x === this._anchor)
+            return;
+        this._anchor = x;
+        if (this._visual)
+            this._relayout();
+    }
 
     debugExpand() {
-        this.pinned = true;
+        this._pinned = true;
         this._debugPinned = true;
         this._expand();
     }
 
     debugHover(index) {
-        this.pinned = true;
+        this._pinned = true;
         this._debugPinned = true;
         if (index < this._cells.length)
             this._showCard(index);
