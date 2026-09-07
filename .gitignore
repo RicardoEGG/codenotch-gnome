@@ -1,1 +1,3 @@
-dev/out/
+dev/out*/
+dev/crop-*.png
+dev/log-*.txt

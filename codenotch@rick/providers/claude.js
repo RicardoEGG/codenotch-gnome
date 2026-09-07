@@ -15,6 +15,7 @@ export class ClaudeProvider {
     constructor(configDir = home('.claude')) {
         this._configDir = configDir;
         this._credentialsPath = `${configDir}/.credentials.json`;
+        this._retryNoEarlierThan = 0;
     }
 
     get sessionsDir() {
@@ -44,17 +45,23 @@ export class ClaudeProvider {
     }
 
     async fetch() {
+        if (this._retryNoEarlierThan > Date.now())
+            throw new ProviderError('rateLimited', 'Claude asked us to wait before reading again');
         const token = this._token();
-        const {status, text} = await request('GET', ENDPOINT, {
+        const {status, text, headers} = await request('GET', ENDPOINT, {
             'Authorization': `Bearer ${token}`,
             'anthropic-beta': 'oauth-2025-04-20',
         });
         if (status === 401 || status === 403)
             throw new ProviderError('needsAuth', 'Sign in to Claude Code to read your usage');
-        if (status === 429)
-            throw new ProviderError('rateLimited', 'Claude is rate limiting usage reads');
+        if (status === 429) {
+            const retry = Number(headers.get_one('Retry-After')) || 0;
+            this._retryNoEarlierThan = Date.now() + Math.max(60, retry) * 1000;
+            throw new ProviderError('rateLimited', 'Claude asked us to wait before reading again');
+        }
         if (status < 200 || status >= 300)
             throw new ProviderError('badResponse', `Claude answered HTTP ${status}`);
+        this._retryNoEarlierThan = 0;
 
         const json = JSON.parse(text);
         return {

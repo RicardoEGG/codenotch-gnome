@@ -2,7 +2,12 @@
   "uuid": "codenotch@rick",
   "name": "Codenotch",
   "description": "A black notch welded to the screen edge showing how much of each coding assistant's usage limit you have burned. GNOME port of vinzdg/codenotch.",
-  "shell-version": ["48", "49", "50"],
+  "shell-version": [
+    "48",
+    "49",
+    "50"
+  ],
   "url": "https://github.com/vinzdg/codenotch",
-  "version": 1
+  "version": 1,
+  "settings-schema": "org.gnome.shell.extensions.codenotch"
 }

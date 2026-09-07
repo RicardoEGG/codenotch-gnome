@@ -32,7 +32,9 @@ export async function request(method, url, headers = {}, body = null) {
     const bytes = await getSession().send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null);
     const data = bytes.get_data();
     return {
-        status: msg.get_status(),
+        // `status_code`, not `get_status()`: the latter hands back a Soup.Status
+        // enum, and GJS refuses codes the enum lacks — 429 among them.
+        status: msg.status_code,
         text: data ? new TextDecoder().decode(data) : '',
         headers: msg.get_response_headers(),
     };

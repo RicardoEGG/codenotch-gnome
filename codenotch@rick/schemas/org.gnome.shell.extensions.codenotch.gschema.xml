@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="codenotch">
+  <enum id="org.gnome.shell.extensions.codenotch.edge">
+    <value nick="right" value="0"/>
+    <value nick="left" value="1"/>
+    <value nick="top" value="2"/>
+    <value nick="bottom" value="3"/>
+  </enum>
+  <schema id="org.gnome.shell.extensions.codenotch" path="/org/gnome/shell/extensions/codenotch/">
+    <key name="edge" enum="org.gnome.shell.extensions.codenotch.edge">
+      <default>'right'</default>
+      <summary>Screen edge the notch is welded to</summary>
+    </key>
+    <key name="position" type="d">
+      <range min="0" max="1"/>
+      <default>0.5</default>
+      <summary>Where along the edge the notch sits (0 = start, 1 = end)</summary>
+    </key>
+    <key name="color" type="s">
+      <default>'#000000'</default>
+      <summary>Colour of the notch and card body, as #rrggbb</summary>
+    </key>
+    <key name="opacity" type="d">
+      <range min="0.1" max="1"/>
+      <default>1.0</default>
+      <summary>Opacity of the notch and card body</summary>
+    </key>
+    <key name="scale" type="d">
+      <range min="0.6" max="2"/>
+      <default>1.0</default>
+      <summary>Size multiplier for the whole surface</summary>
+    </key>
+    <key name="show-labels" type="b">
+      <default>true</default>
+      <summary>Show the percent label under each ring</summary>
+    </key>
+    <key name="always-open" type="b">
+      <default>false</default>
+      <summary>Keep the notch unfolded instead of folding to a pill</summary>
+    </key>
+    <key name="hide-in-fullscreen" type="b">
+      <default>true</default>
+      <summary>Hide while a fullscreen window is on the notch's monitor</summary>
+    </key>
+    <key name="refresh-interval" type="i">
+      <range min="15" max="900"/>
+      <default>60</default>
+      <summary>Seconds between usage reads</summary>
+    </key>
+  </schema>
+</schemalist>

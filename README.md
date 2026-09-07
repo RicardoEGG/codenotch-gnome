@@ -38,15 +38,36 @@ re-login (or `Alt+F2`, `r` on X11).
 
 Requires GNOME Shell 48 or newer.
 
+## Preferences
+
+Open them from the Extensions app or with `gnome-extensions prefs codenotch@rick`.
+
+- **Posição**: which screen edge the notch is welded to (right, left, top,
+  bottom) and where along that edge it sits. A top notch hangs below the
+  panel; a bottom one rests on the dock.
+- **Aparência**: body colour, body opacity, overall size, and whether the
+  percent label shows under each ring. Rings, glyphs and text never change.
+- **Comportamento**: keep the notch always unfolded, hide it while a window
+  is fullscreen, and how often usage is read.
+
+Every change rebuilds the surface in place; nothing needs a restart.
+
 ## Development
 
 `dev/nested.sh` runs a headless GNOME Shell with only this extension enabled
 and has the extension photograph itself at rest, unfolded, and with each
-provider's card open. Screenshots land in `dev/out/`.
+provider's card open. Screenshots land in `dev/out/`. Settings can be
+injected as keyfile lines; `dev/prefs-shot.sh` opens the preferences window
+inside that shell and photographs it too.
 
 ```sh
 ./dev/nested.sh
+NESTED_SETTINGS=$'edge=\'top\'\nopacity=0.7' ./dev/nested.sh dev/out-top
+./dev/prefs-shot.sh
 ```
+
+The schema in `schemas/` must be compiled after editing:
+`glib-compile-schemas codenotch@rick/schemas/`.
 
 Layout constants live in `layout.js` and are the design frame's measurements
 scaled so the ring is 44 px; change nothing there without a ruler.
@@ -54,5 +75,5 @@ scaled so the ring is 44 px; change nothing there without a ruler.
 ## Not ported (yet)
 
 - Cursor, Grok, GLM, OpenCode and Antigravity providers.
-- The settings orb and its preferences (edge choice, pin, always-on).
+- The settings orb; preferences live in a normal GNOME preferences window.
 - Codex session activity (it lives in a SQLite file).
