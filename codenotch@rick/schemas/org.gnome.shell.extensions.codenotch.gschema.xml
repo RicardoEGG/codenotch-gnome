@@ -30,6 +30,11 @@
       <default>1.0</default>
       <summary>Size multiplier for the whole surface</summary>
     </key>
+    <key name="text-scale" type="d">
+      <range min="0.8" max="2.5"/>
+      <default>1.35</default>
+      <summary>Extra size multiplier for text only (percent labels and the card)</summary>
+    </key>
     <key name="show-labels" type="b">
       <default>true</default>
       <summary>Show the percent label under each ring</summary>
@@ -41,6 +46,16 @@
     <key name="hide-in-fullscreen" type="b">
       <default>true</default>
       <summary>Hide while a fullscreen window is on the notch's monitor</summary>
+    </key>
+    <key name="hot-zone" type="i">
+      <range min="1" max="40"/>
+      <default>4</default>
+      <summary>Depth in pixels of the strip along the edge that opens the notch</summary>
+    </key>
+    <key name="open-delay" type="i">
+      <range min="0" max="1000"/>
+      <default>150</default>
+      <summary>Milliseconds the pointer must dwell in the strip before the notch opens</summary>
     </key>
     <key name="refresh-interval" type="i">
       <range min="15" max="900"/>

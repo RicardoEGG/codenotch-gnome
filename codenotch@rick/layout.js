@@ -4,7 +4,8 @@
 // everything else keeps the frame's proportions. Mirrors NotchLayout.swift.
 //
 // `L` is filled by `configureLayout()`, so the user's size preference scales
-// the whole surface — notch, rings, type, card — together.
+// the whole surface — notch, rings, type, card — together. `textScale` sits on
+// top of that and grows only the type, and the card with it so lines still fit.
 const FRAME_SCALE = 44 / 117;
 
 // Cap-height fraction of an em. SF Pro is 0.714; Adwaita Sans is close enough
@@ -16,9 +17,9 @@ export const L = {};
 // What the user chose for the body: colour and how see-through it is.
 export const Appearance = {color: '#000000', opacity: 1};
 
-export function configureLayout({scale = 1, showLabels = true} = {}) {
+export function configureLayout({scale = 1, showLabels = true, textScale = 1} = {}) {
     const px = p => p * FRAME_SCALE * scale;
-    const fontSize = cap => px(cap) / CAP_RATIO;
+    const fontSize = cap => px(cap) / CAP_RATIO * textScale;
 
     Object.assign(L, {
         // The notch body
@@ -47,7 +48,7 @@ export function configureLayout({scale = 1, showLabels = true} = {}) {
         activityStroke: px(5.5),
 
         // The hover card
-        cardWidth: px(600),
+        cardWidth: px(600) * textScale,
         cardCorner: px(49.5),
         cardPadding: px(32),
         tailLength: px(75),

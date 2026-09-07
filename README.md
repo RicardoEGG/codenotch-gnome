@@ -45,10 +45,13 @@ Open them from the Extensions app or with `gnome-extensions prefs codenotch@rick
 - **Posição**: which screen edge the notch is welded to (right, left, top,
   bottom) and where along that edge it sits. A top notch hangs below the
   panel; a bottom one rests on the dock.
-- **Aparência**: body colour, body opacity, overall size, and whether the
-  percent label shows under each ring. Rings, glyphs and text never change.
-- **Comportamento**: keep the notch always unfolded, hide it while a window
-  is fullscreen, and how often usage is read.
+- **Aparência**: body colour, body opacity, overall size, text size, and
+  whether the percent label shows under each ring. Rings and glyphs never
+  change colour.
+- **Comportamento**: how wide the strip along the edge that opens the notch
+  is (4 px by default, so things beside a folded notch stay clickable) and
+  how long the pointer must dwell there; keep the notch always unfolded;
+  hide it while a window is fullscreen; how often usage is read.
 
 Every change rebuilds the surface in place; nothing needs a restart.
 

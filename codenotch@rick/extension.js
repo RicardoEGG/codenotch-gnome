@@ -55,7 +55,11 @@ export default class CodenotchExtension extends Extension {
         const s = this._settings;
         this._notch?.destroy();
 
-        configureLayout({scale: s.get_double('scale'), showLabels: s.get_boolean('show-labels')});
+        configureLayout({
+            scale: s.get_double('scale'),
+            showLabels: s.get_boolean('show-labels'),
+            textScale: s.get_double('text-scale'),
+        });
         Appearance.color = s.get_string('color');
         Appearance.opacity = s.get_double('opacity');
 
@@ -67,6 +71,8 @@ export default class CodenotchExtension extends Extension {
             alwaysOpen: s.get_boolean('always-open'),
             hideInFullscreen: s.get_boolean('hide-in-fullscreen'),
             refreshInterval: s.get_int('refresh-interval'),
+            hotZone: s.get_int('hot-zone'),
+            openDelay: s.get_int('open-delay'),
         });
         this._notch.enable();
     }

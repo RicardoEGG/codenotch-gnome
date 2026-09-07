@@ -467,6 +467,7 @@ export class Notch {
     constructor(providers, {
         edge = 'right', position = 0.5, alwaysOpen = false,
         hideInFullscreen = true, refreshInterval = 60,
+        hotZone = 4, openDelay = 150,
     } = {}) {
         this._providers = providers;
         this._edge = TAIL_SIDE[edge] ? edge : 'right';
@@ -475,6 +476,8 @@ export class Notch {
         this._alwaysOpen = alwaysOpen;
         this._hideInFullscreen = hideInFullscreen;
         this._refreshInterval = Math.max(15, refreshInterval);
+        this._hotZone = Math.max(1, hotZone);
+        this._openDelay = Math.max(0, openDelay);
 
         this._states = new Map(providers.map(p => [p.id, {
             snapshot: null, status: 'error', error: null, fetching: false,
@@ -488,6 +491,7 @@ export class Notch {
         this._pollTimer = 0;
         this._refreshTimer = 0;
         this._cardTimer = 0;
+        this._openTimer = 0;
         this._sessionMonitors = [];
         this.pinned = alwaysOpen;
     }
@@ -526,7 +530,11 @@ export class Notch {
         Main.layoutManager.uiGroup.add_child(this._card);
 
         this._hit.connect('enter-event', () => {
-            this._expand();
+            this._scheduleExpand();
+            return Clutter.EVENT_PROPAGATE;
+        });
+        this._hit.connect('leave-event', () => {
+            this._cancelExpand();
             return Clutter.EVENT_PROPAGATE;
         });
         this._hit.connect('button-press-event', () => {
@@ -570,6 +578,7 @@ export class Notch {
 
     _stopTimers() {
         this._stopPolling();
+        this._cancelExpand();
         if (this._refreshTimer)
             GLib.source_remove(this._refreshTimer);
         if (this._cardTimer)
@@ -677,13 +686,30 @@ export class Notch {
             alongSize = this._shapeLength;
             acrossSize = this._depth;
         } else {
-            alongSize = L.pillHeight + 2 * 10;
-            along = this._shapeStart + (this._shapeLength - alongSize) / 2;
-            acrossSize = L.pillHotZone;
+            ({along, alongSize, acrossSize} = this._restingBox());
         }
         const [x, y] = this._place(along, 0, alongSize, acrossSize);
         this._hit.set_size(this._vertical ? acrossSize : alongSize, this._vertical ? alongSize : acrossSize);
         this._hit.set_position(x, y);
+    }
+
+    // At rest only a thin strip flush with the edge, as long as the pill,
+    // opens the notch: anything beside it stays clickable.
+    _restingBox() {
+        const alongSize = L.pillHeight;
+        return {
+            along: this._shapeStart + (this._shapeLength - alongSize) / 2,
+            alongSize,
+            acrossSize: this._hotZone,
+        };
+    }
+
+    _restingRect() {
+        const {along, alongSize, acrossSize} = this._restingBox();
+        const [x, y] = this._place(along, 0, alongSize, acrossSize);
+        return this._vertical
+            ? [x, y, x + acrossSize, y + alongSize]
+            : [x, y, x + alongSize, y + acrossSize];
     }
 
     // Along coordinate of a ring's centre, on screen.
@@ -693,10 +719,35 @@ export class Notch {
 
     // Folding
 
+    // A brush past the edge should not open the notch, so the pointer has to
+    // dwell in the strip; it is checked again when the delay is up.
+    _scheduleExpand() {
+        if (this._expanded || this._openTimer)
+            return;
+        if (this._openDelay === 0) {
+            this._expand();
+            return;
+        }
+        this._openTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this._openDelay, () => {
+            this._openTimer = 0;
+            const [x, y] = global.get_pointer();
+            if (!this._expanded && this._inside(x, y, this._restingRect()))
+                this._expand();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _cancelExpand() {
+        if (this._openTimer)
+            GLib.source_remove(this._openTimer);
+        this._openTimer = 0;
+    }
+
     _expand() {
         if (this._expanded)
             return;
         this._expanded = true;
+        this._cancelExpand();
         this._leaveAt = 0;
         this._shape.remove_transition('progress');
         this._shape.ease_property('progress', 1, Motion.unfold);

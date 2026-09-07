@@ -22,6 +22,8 @@ function sliderRow(settings, key, {title, subtitle, min, max, step, format}) {
         hexpand: true,
         width_request: 220,
         valign: Gtk.Align.CENTER,
+        // An integer step means an integer key: keep the value whole.
+        ...(Number.isInteger(step) ? {digits: 0} : {}),
     });
     scale.set_format_value_func((_s, value) => format(value));
     settings.bind(key, scale.adjustment, 'value', Gio.SettingsBindFlags.DEFAULT);
@@ -125,6 +127,13 @@ export default class CodenotchPreferences extends ExtensionPreferences {
             format: v => `${Math.round(v * 100)}%`,
         }));
 
+        look.add(sliderRow(settings, 'text-scale', {
+            title: 'Tamanho do texto',
+            subtitle: 'Só o texto: percentuais, títulos e o cartão',
+            min: 0.8, max: 2.5, step: 0.05,
+            format: v => `${Math.round(v * 100)}%`,
+        }));
+
         const labels = new Adw.SwitchRow({
             title: 'Mostrar porcentagem',
             subtitle: 'O número embaixo de cada anel',
@@ -149,6 +158,20 @@ export default class CodenotchPreferences extends ExtensionPreferences {
         });
         settings.bind('hide-in-fullscreen', fullscreen, 'active', Gio.SettingsBindFlags.DEFAULT);
         behaviour.add(fullscreen);
+
+        behaviour.add(sliderRow(settings, 'hot-zone', {
+            title: 'Zona de abertura',
+            subtitle: 'Largura, em pixels, da faixa junto à borda que abre o notch',
+            min: 1, max: 40, step: 1,
+            format: v => `${Math.round(v)} px`,
+        }));
+
+        behaviour.add(sliderRow(settings, 'open-delay', {
+            title: 'Atraso para abrir',
+            subtitle: 'Quanto tempo o ponteiro precisa ficar na faixa antes de abrir',
+            min: 0, max: 1000, step: 10,
+            format: v => `${Math.round(v)} ms`,
+        }));
 
         const refresh = new Adw.SpinRow({
             title: 'Intervalo de leitura',

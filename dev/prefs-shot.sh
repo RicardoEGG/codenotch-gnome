@@ -10,6 +10,7 @@ ln -sfn "$ROOT/codenotch@rick" "$OUT/data/gnome-shell/extensions/codenotch@rick"
 printf "[org/gnome/shell]\nenabled-extensions=['codenotch@rick']\nwelcome-dialog-last-shown-version='999'\n" \
     > "$OUT/config/glib-2.0/settings/keyfile"
 rm -f "$OUT"/shot-*.png
+rm -f "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/gnome-shell-disable-extensions"
 export XDG_DATA_HOME="$OUT/data" XDG_CONFIG_HOME="$OUT/config" GSETTINGS_BACKEND=keyfile
 export CODENOTCH_SHOT="$OUT/shot" CODENOTCH_SHOT_LATE=6000
 unset JOURNAL_STREAM
