@@ -6,6 +6,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {configureLayout, Appearance} from './layout.js';
 import {ClaudeProvider} from './providers/claude.js';
 import {CodexProvider} from './providers/codex.js';
+import {AntigravityProvider} from './providers/antigravity.js';
 import * as http from './providers/http.js';
 import {UsageStore} from './store.js';
 import {Notch} from './notch.js';
@@ -30,7 +31,8 @@ export function createApp(settings) {
     Appearance.opacity = settings.get_double('opacity');
 
     // Only the tools that are signed in on this machine get a cell.
-    const providers = [new ClaudeProvider(), new CodexProvider()].filter(p => p.available());
+    const providers = [new ClaudeProvider(), new CodexProvider(), new AntigravityProvider()]
+        .filter(p => p.available());
     const store = new UsageStore(providers, {refreshInterval: settings.get_int('refresh-interval')});
     // Started before the views so they draw the remembered reading at once.
     store.start();

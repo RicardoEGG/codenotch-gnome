@@ -10,8 +10,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 import {Palette, setColor, band, bandColor} from './layout.js';
 import {drawGlyph} from './glyphs.js';
-import {percentText} from './copy.js';
-import {headlineOf} from './store.js';
+import {headlineOf, headlineText} from './store.js';
 
 // Panel type is the shell's, so only the mark is measured here: a 14 px glyph
 // with room around it for the activity arc to orbit on an 18 px circle.
@@ -189,7 +188,7 @@ class PanelIndicator extends PanelMenu.Button {
         if (!row || !state)
             return;
         const fraction = headlineOf(state.snapshot)?.usedFraction ?? null;
-        row.label.text = fraction === null ? '—' : percentText(fraction);
+        row.label.text = headlineText(state.snapshot);
         row.label.style = `color: ${fraction === null ? Palette.textPrimary : bandColor(band(fraction))};`;
         // Dimming is about the reading's age; the activity beside it is known
         // first-hand and stays at full strength.

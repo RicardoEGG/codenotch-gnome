@@ -39,3 +39,9 @@ export function elapsedText(since, now = new Date()) {
 export function percentText(fraction) {
     return `${Math.round(fraction * 100)}%`;
 }
+
+// A window with no published ceiling: the count itself, with a tilde when the
+// notch counted it off local files rather than being told it.
+export function countText(used, approximate) {
+    return `${approximate ? '~' : ''}${used} ${used === 1 ? 'request' : 'requests'} today`;
+}

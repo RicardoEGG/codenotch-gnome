@@ -2,7 +2,8 @@
 // preference rebuilds so the notch never opens empty (UsageArchive.swift).
 //
 // Shape on disk:
-//   { "<providerID>": { "snapshot": { windows, headlineID, fetchedAt } | null,
+//   { "<providerID>": { "snapshot": { windows, headlineID, fetchedAt,
+//                                     note?, fidelity? } | null,
 //                       "backoffUntil": <ms since epoch> | null } }
 import GLib from 'gi://GLib';
 
@@ -21,15 +22,27 @@ function parseDate(text) {
 function restoreSnapshot(raw) {
     if (!raw || !Array.isArray(raw.windows) || typeof raw.fetchedAt !== 'number')
         return null;
+    // A window either has a fraction of a limit or a bare count; one of the
+    // two has to have survived for the window to still say anything.
     const windows = raw.windows
-        .filter(w => w && typeof w.usedFraction === 'number')
-        .map(w => ({
-            id: w.id,
-            label: w.label ?? '',
-            usedFraction: w.usedFraction,
-            resetsAt: parseDate(w.resetsAt),
-        }));
-    return {windows, headlineID: raw.headlineID ?? null, fetchedAt: raw.fetchedAt};
+        .filter(w => w && (typeof w.usedFraction === 'number' || typeof w.used === 'number'))
+        .map(w => {
+            const window = {
+                id: w.id,
+                label: w.label ?? '',
+                usedFraction: typeof w.usedFraction === 'number' ? w.usedFraction : null,
+                resetsAt: parseDate(w.resetsAt),
+            };
+            if (typeof w.used === 'number')
+                window.used = w.used;
+            return window;
+        });
+    const snapshot = {windows, headlineID: raw.headlineID ?? null, fetchedAt: raw.fetchedAt};
+    if (typeof raw.note === 'string')
+        snapshot.note = raw.note;
+    if (typeof raw.fidelity === 'string')
+        snapshot.fidelity = raw.fidelity;
+    return snapshot;
 }
 
 export function loadArchive() {

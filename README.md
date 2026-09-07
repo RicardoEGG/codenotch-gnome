@@ -21,9 +21,18 @@ credential exists.
 |----------|-----------------|----------------|
 | Claude Code | `~/.claude/.credentials.json` | `api.anthropic.com/api/oauth/usage` |
 | Codex CLI | `~/.codex/auth.json` | `chatgpt.com/backend-api/wham/usage` |
+| Antigravity (`agy`) | GNOME keyring, service `gemini` / `antigravity` | `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` |
 
 Tokens are read only, never refreshed or written. If one expires, the card
 says so and the tool itself refreshes it on its next run.
+
+Antigravity only answers the quota endpoint for an account licensed for it.
+Without that licence there is no published limit to be a fraction of, so the
+card counts the requests `agy` logged today from its own transcripts under
+`~/.gemini/antigravity-cli/brain/` and marks the number with a `~`. Its access
+token lives one hour and only `agy` renews it; the notch never does, so an hour
+after the last `agy` run the card says the sign-in expired and falls back to
+that local count.
 
 Usage is read every minute only while a tool is active and every five
 minutes otherwise; unfolding the notch never triggers a read. The last
@@ -95,6 +104,6 @@ scaled so the ring is 44 px; change nothing there without a ruler.
 
 ## Not ported (yet)
 
-- Cursor, Grok, GLM, OpenCode and Antigravity providers.
+- Cursor, Grok, GLM and OpenCode providers.
 - The settings orb; preferences live in a normal GNOME preferences window.
 - Codex session activity (it lives in a SQLite file).

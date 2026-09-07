@@ -4,7 +4,8 @@
 // once no matter how many of them are up.
 import GLib from 'gi://GLib';
 
-import {ClaudeSessionMonitor, summarize} from './sessions.js';
+import {percentText} from './copy.js';
+import {summarize} from './sessions.js';
 import {loadArchive, saveArchive} from './archive.js';
 
 // Reading cadence: a provider is read every timer tick only while its tool is
@@ -47,7 +48,9 @@ export class UsageStore {
         for (const provider of this.providers) {
             if (!provider.tracksSessions)
                 continue;
-            const monitor = new ClaudeSessionMonitor(provider.sessionsDir, sessions => {
+            // What counts as activity is the provider's business: Claude
+            // reads a session directory, Antigravity watches its transcripts.
+            const monitor = provider.createSessionMonitor(sessions => {
                 this._sessions.set(provider.id, sessions);
                 this._notify(provider.id);
             });
@@ -165,6 +168,17 @@ export class UsageStore {
         if (changed)
             saveArchive(this._archive);
     }
+}
+
+// The one number the ring and the panel indicator stand for: a percentage
+// when the window has a ceiling, the bare count when it has none.
+export function headlineText(snapshot) {
+    const headline = headlineOf(snapshot);
+    if (typeof headline?.usedFraction === 'number')
+        return percentText(headline.usedFraction);
+    if (typeof headline?.used === 'number')
+        return `${headline.used}`;
+    return '—';
 }
 
 // The one window a single number has to stand for.

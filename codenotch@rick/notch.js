@@ -9,8 +9,8 @@ import {L, Palette, Appearance, setColor, band, bandColor,
     bodyDepth, shapeLength, ringCenter, cellPitch} from './layout.js';
 import {edgeNotchPath, cardPath} from './shape.js';
 import {drawGlyph} from './glyphs.js';
-import {resetText, elapsedText, percentText} from './copy.js';
-import {headlineOf} from './store.js';
+import {resetText, elapsedText, percentText, countText} from './copy.js';
+import {headlineOf, headlineText} from './store.js';
 
 // The motion vocabulary (NotchMotion.swift), as Clutter modes. Springs are
 // approximated: EASE_OUT_BACK gives the unfold its single soft overshoot.
@@ -261,7 +261,7 @@ class Cell extends St.Widget {
         // working right now is known first-hand and stays at full strength.
         this._ring.opacity = state.status === 'ok' ? 255 : 115;
         if (this._label)
-            this._label.text = fraction === null ? '—' : percentText(fraction);
+            this._label.text = headlineText(state.snapshot);
         this._activity.setState(activity?.state === 'idle' ? null : activity?.state ?? null);
     }
 });
@@ -411,14 +411,27 @@ class Card extends St.Widget {
             add(spacer(L.headerToBlock));
             add(text(state.error?.message ?? 'Reading usage…', {color: Palette.textSecondary}));
         } else {
+            // A reading the notch worked out for itself says so once, above
+            // the windows, rather than in every one of them.
+            let first = true;
+            if (snapshot.note) {
+                add(spacer(L.headerToBlock));
+                add(text(snapshot.note, {color: Palette.textSecondary}));
+                first = false;
+            }
             snapshot.windows.forEach((window, index) => {
-                add(spacer(index === 0 ? L.headerToBlock : L.blockSpacing));
+                add(spacer(index === 0 && first ? L.headerToBlock : L.blockSpacing));
                 const reset = window.resetsAt ? resetText(window.resetsAt, now) : '';
                 add(splitRow(text(window.label), text(reset, {color: Palette.textSecondary})));
                 add(spacer(L.labelToBar));
-                add(usageBar(window.usedFraction));
-                add(spacer(L.barToUsed));
-                add(text(`${percentText(window.usedFraction)} Used`));
+                // Nothing to fill a bar with when the window has no ceiling.
+                if (typeof window.usedFraction === 'number') {
+                    add(usageBar(window.usedFraction));
+                    add(spacer(L.barToUsed));
+                    add(text(`${percentText(window.usedFraction)} Used`));
+                } else {
+                    add(text(countText(window.used ?? 0, snapshot.fidelity === 'derived')));
+                }
             });
             if (state.error) {
                 const lead = state.error.kind === 'rateLimited' ? 'Waiting for the API' : 'Couldn\'t refresh';

@@ -2,6 +2,7 @@
 // (on macOS it is in the keychain). Codenotch never signs in anywhere: it
 // borrows that token to ask the same usage endpoint Claude Code's /usage does.
 import {request, readJSON, home, exists, ProviderError} from './http.js';
+import {ClaudeSessionMonitor} from '../sessions.js';
 
 const ENDPOINT = 'https://api.anthropic.com/api/oauth/usage';
 
@@ -27,8 +28,8 @@ export class ClaudeProvider {
         this._retryNoEarlierThan = deadline ?? 0;
     }
 
-    get sessionsDir() {
-        return `${this._configDir}/sessions`;
+    createSessionMonitor(onChange) {
+        return new ClaudeSessionMonitor(`${this._configDir}/sessions`, onChange);
     }
 
     available() {
