@@ -62,5 +62,9 @@
       <default>60</default>
       <summary>Seconds between usage reads</summary>
     </key>
+    <key name="reload-token" type="i">
+      <default>0</default>
+      <summary>Bump to reload the extension's code without logging out</summary>
+    </key>
   </schema>
 </schemalist>

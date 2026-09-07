@@ -180,5 +180,16 @@ export default class CodenotchPreferences extends ExtensionPreferences {
         });
         settings.bind('refresh-interval', refresh, 'value', Gio.SettingsBindFlags.DEFAULT);
         behaviour.add(refresh);
+
+        // The shell reloads its copy of the code when this key changes.
+        const dev = new Adw.PreferencesGroup({
+            title: 'Desenvolvimento',
+            description: 'Carrega o código de novo sem encerrar a sessão. Mudanças em extension.js e prefs.js ainda pedem relogar.',
+        });
+        page.add(dev);
+
+        const reload = new Adw.ButtonRow({title: 'Recarregar extensão'});
+        reload.connect('activated', () => settings.set_int('reload-token', Date.now() % 2147483647));
+        dev.add(reload);
     }
 }

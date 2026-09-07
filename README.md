@@ -38,8 +38,16 @@ gnome-extensions enable codenotch@rick
 ```
 
 On Wayland the shell only discovers new extension directories at login, so
-the first enable may need a log out and back in. Later edits also need a
-re-login (or `Alt+F2`, `r` on X11).
+the first enable may need a log out and back in.
+
+### Reloading
+
+After that first login no edit needs another one. `extension.js` is only a
+loader: it copies the source into a fresh directory under
+`~/.cache/codenotch/live/` and imports from there, so the "Recarregar
+extensão" button at the bottom of the preferences (or `dev/reload.sh`)
+reloads everything except `extension.js` and `prefs.js` themselves. Those two
+still need a re-login (or `Alt+F2`, `r` on X11).
 
 Requires GNOME Shell 48 or newer.
 
