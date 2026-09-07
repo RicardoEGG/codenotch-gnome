@@ -11,6 +11,14 @@ window, when each resets, and the Claude Code sessions running right now.
 Spinning arcs inside a ring mean that tool is working; a pulsing ring means it
 is waiting on you.
 
+<p align="center">
+  <img src="docs/edge.png" width="46%" alt="The notch welded to the right edge of the screen, unfolded, with the Codex card open">
+  <img src="docs/panel.png" width="46%" alt="The top panel indicator with the notch dropped out of the panel and the Claude card open">
+</p>
+
+Left: the edge notch, unfolded, with a provider card. Right: the top panel
+indicator with the notch dropped out of the panel.
+
 ## Providers
 
 Codenotch never signs in anywhere. Every reading is borrowed from a credential
@@ -109,3 +117,10 @@ scaled so the ring is 44 px; change nothing there without a ruler.
 - Cursor, Grok, GLM and OpenCode providers.
 - The settings orb; preferences live in a normal GNOME preferences window.
 - Codex session activity (it lives in a SQLite file).
+
+## Credits
+
+A port of [Codenotch](https://github.com/vinzdg/codenotch) by vinzdg, which
+is where the idea, the design frame every number here is measured from, the
+palette and the traced provider marks come from. Both projects are MIT
+licensed; see [LICENSE](LICENSE).
