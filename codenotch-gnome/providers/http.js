@@ -5,6 +5,7 @@ import Soup from 'gi://Soup';
 Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
 
 let session = null;
+const owned = new Map();
 
 function getSession() {
     if (!session) {
@@ -16,9 +17,25 @@ function getSession() {
     return session;
 }
 
+// A session of one's own, for a caller that has to relax something the shared
+// session must keep. Kept here rather than by the caller so that shutdown
+// closes every socket the extension opened, and a caller asking again after
+// one gets a live session instead of an abandoned one.
+export function ownSession(name, options) {
+    let own = owned.get(name);
+    if (!own) {
+        own = new Soup.Session(options);
+        owned.set(name, own);
+    }
+    return own;
+}
+
 export function shutdown() {
     session?.abort();
     session = null;
+    for (const own of owned.values())
+        own.abort();
+    owned.clear();
 }
 
 export async function request(method, url, headers = {}, body = null) {
@@ -62,6 +79,6 @@ export function exists(path) {
 export class ProviderError extends Error {
     constructor(kind, message) {
         super(message);
-        this.kind = kind; // 'needsAuth' | 'expired' | 'rateLimited' | 'badResponse' | 'network'
+        this.kind = kind; // 'needsAuth' | 'expired' | 'rateLimited' | 'offline' | 'badResponse' | 'network'
     }
 }

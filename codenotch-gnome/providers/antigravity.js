@@ -1,13 +1,19 @@
-// Google Antigravity's CLI (`agy`) keeps its OAuth token in the GNOME keyring,
-// with a stale copy on disk as a fallback. That token buys a plan name and,
-// for a licensed account, the quota endpoint; an unlicensed one answers 403
-// and the day's requests are counted from the transcripts `agy` leaves behind.
+// Three sources for one number, in descending order of what they know.
+//
+// A running `agy` (or the IDE) will answer for its own quota over a local RPC,
+// whoever the account is — that is the bridge, and it is tried first. Failing
+// that, the OAuth token `agy` keeps in the GNOME keyring, with a stale copy on
+// disk as a fallback, buys a plan name and, for a licensed account, Google's
+// quota endpoint; an unlicensed one answers 403. Failing that too, the day's
+// requests are counted from the transcripts `agy` leaves behind.
+//
 // Only `agy` ever refreshes the token — an hour old and it is dead — so an
 // expired sign-in is not a failure here, just a reading without the network.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {request, home, exists, ProviderError} from './http.js';
+import {readQuota} from './antigravity-bridge.js';
 import {readAntigravityActivity, AntigravityActivityMonitor} from '../sessions.js';
 
 const LOAD_ENDPOINT = 'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist';
@@ -15,6 +21,7 @@ const QUOTA_ENDPOINT = 'https://cloudcode-pa.googleapis.com/v1internal:retrieveU
 const KEYRING_PREFIX = 'go-keyring-base64:';
 const KEYRING_TIMEOUT = 3000;
 const EXPIRED_NOTE = 'Sign-in expired · run agy to refresh';
+const BRIDGE_NOTE = 'Open agy to read the limits';
 
 export class AntigravityProvider {
     id = 'antigravity';
@@ -52,16 +59,32 @@ export class AntigravityProvider {
         return new AntigravityActivityMonitor(this._brains, onChange);
     }
 
-    async fetch() {
+    // `previous` is the reading this one would replace, which is what decides
+    // whether falling back to a count is an answer or a regression.
+    async fetch(previous = null) {
+        const bridge = await readQuota();
+        if (bridge.windows.length > 0) {
+            return {
+                windows: bridge.windows,
+                headlineID: bridge.headlineID,
+                fidelity: 'official',
+                source: 'bridge',
+            };
+        }
+        // Nothing running to ask is worth saying out loud, since for an
+        // unlicensed account it is the whole difference between a percentage
+        // and a tally.
+        const missing = bridge.found ? null : BRIDGE_NOTE;
+
         const token = await this._token();
         if (token.expiresAt !== null && token.expiresAt <= Date.now())
-            return this._local(EXPIRED_NOTE);
+            return this._local(joinNotes(EXPIRED_NOTE, missing), previous);
         if (this._retryNoEarlierThan > Date.now())
             throw new ProviderError('rateLimited', 'Antigravity asked us to wait before reading again');
 
         const load = await this._post(LOAD_ENDPOINT, token.accessToken, {metadata: {pluginType: 'GEMINI'}});
         if (load.status === 401 || load.status === 403)
-            return this._local(EXPIRED_NOTE);
+            return this._local(joinNotes(EXPIRED_NOTE, missing), previous);
         if (load.status < 200 || load.status >= 300)
             throw new ProviderError('badResponse', `Antigravity answered HTTP ${load.status}`);
         this._retryNoEarlierThan = 0;
@@ -71,14 +94,21 @@ export class AntigravityProvider {
         const quota = await this._post(QUOTA_ENDPOINT, token.accessToken, {});
         const windows = quota.status >= 200 && quota.status < 300 ? windowsFrom(quota.json) : [];
         if (windows.length === 0)
-            return this._local(null);
+            return this._local(missing, previous);
         return {windows, headlineID: windows[0].id, fidelity: 'official'};
     }
 
-    // What the notch can say with no network at all: the model steps `agy`
+    // What the notch can say with no numbers at all: the model steps `agy`
     // logged today. There is no published ceiling to be a fraction of, so the
     // window carries a bare count and the ring stays empty.
-    _local(note) {
+    //
+    // A ring that was showing a percentage must not flip to a count the moment
+    // `agy` closes — that reads as a fault rather than a closed program — so a
+    // reading that came from the bridge is refused instead, and the store keeps
+    // the last percentage and dims it with age.
+    _local(note, previous = null) {
+        if (previous?.source === 'bridge')
+            throw new ProviderError('offline', 'agy is not running · open it to refresh');
         const {requestsToday} = readAntigravityActivity(this._brains);
         const snapshot = {
             windows: [{
@@ -194,6 +224,11 @@ function decodeCredential(raw) {
     } catch {
         return null;
     }
+}
+
+function joinNotes(...notes) {
+    const kept = notes.filter(Boolean);
+    return kept.length > 0 ? kept.join(' · ') : null;
 }
 
 function tierFrom(json) {

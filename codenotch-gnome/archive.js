@@ -3,7 +3,7 @@
 //
 // Shape on disk:
 //   { "<providerID>": { "snapshot": { windows, headlineID, fetchedAt,
-//                                     note?, fidelity? } | null,
+//                                     note?, fidelity?, source? } | null,
 //                       "backoffUntil": <ms since epoch> | null } }
 import GLib from 'gi://GLib';
 
@@ -42,6 +42,10 @@ function restoreSnapshot(raw) {
         snapshot.note = raw.note;
     if (typeof raw.fidelity === 'string')
         snapshot.fidelity = raw.fidelity;
+    // Which source answered, so a provider that must not fall back to a lesser
+    // one still knows that after a restart.
+    if (typeof raw.source === 'string')
+        snapshot.source = raw.source;
     return snapshot;
 }
 

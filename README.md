@@ -29,19 +29,27 @@ credential exists.
 |----------|-----------------|----------------|
 | Claude Code | `~/.claude/.credentials.json` | `api.anthropic.com/api/oauth/usage` |
 | Codex CLI | `~/.codex/auth.json` | `chatgpt.com/backend-api/wham/usage` |
-| Antigravity (`agy`) | GNOME keyring, service `gemini` / `antigravity` | `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` |
+| Antigravity (`agy`) | the running `agy`, else GNOME keyring, service `gemini` / `antigravity` | `agy`'s own RPC on localhost, else `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` |
 | Grok CLI | `~/.grok/auth.json` | `cli-chat-proxy.grok.com/v1/billing` |
 
 Tokens are read only, never refreshed or written. If one expires, the card
 says so and the tool itself refreshes it on its next run.
 
-Antigravity only answers the quota endpoint for an account licensed for it.
-Without that licence there is no published limit to be a fraction of, so the
-card counts the requests `agy` logged today from its own transcripts under
-`~/.gemini/antigravity-cli/brain/` and marks the number with a `~`. Its access
-token lives one hour and only `agy` renews it; the notch never does, so an hour
-after the last `agy` run the card says the sign-in expired and falls back to
-that local count.
+Antigravity's limits come from `agy` itself. Google's quota endpoint answers
+only for an account licensed for it and judges which client is asking, so
+Codenotch asks the same thing Antigravity's own usage panel asks: the language
+server that a running `agy` (or the Antigravity IDE) keeps listening on
+localhost, which already holds the credential. That works for any account, and
+it is where the percentages on the card come from.
+
+The count is only what is left when neither runs and the account has no licence
+for the cloud endpoint: the requests `agy` logged today, read from its own
+transcripts under `~/.gemini/antigravity-cli/brain/` and marked with a `~`. The
+card says `Open agy to read the limits` when that is why. Closing `agy` does not
+throw the percentages away — the card keeps the last ones, dimmed, and says
+`agy` is not running, rather than dropping to a count. Its access token lives
+one hour and only `agy` renews it; the notch never does, so an hour after the
+last `agy` run the card says the sign-in expired.
 
 Grok's billing endpoint answers for every account, but it only states numbers
 where something is metered; an account with no published allowance gets zeros

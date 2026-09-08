@@ -141,7 +141,9 @@ export class UsageStore {
         state.attemptedAt = Date.now();
         let read = false;
         try {
-            const snapshot = await provider.fetch();
+            // The reading being replaced, for a provider whose fallback is
+            // worth less than what it already has. Most ignore it.
+            const snapshot = await provider.fetch(state.snapshot);
             state.snapshot = {...snapshot, fetchedAt: Date.now()};
             state.error = null;
             read = true;

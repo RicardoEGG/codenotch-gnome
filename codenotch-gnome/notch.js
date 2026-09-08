@@ -434,7 +434,9 @@ class Card extends St.Widget {
                 }
             });
             if (state.error) {
-                const lead = state.error.kind === 'rateLimited' ? 'Waiting for the API' : 'Couldn\'t refresh';
+                const lead = state.error.kind === 'rateLimited' ? 'Waiting for the API'
+                    : state.error.kind === 'offline' ? state.error.message
+                    : 'Couldn\'t refresh';
                 add(spacer(L.blockSpacing));
                 add(text(`${lead} · last read ${elapsedText(new Date(snapshot.fetchedAt), now)} ago`,
                     {color: Palette.textSecondary}));
