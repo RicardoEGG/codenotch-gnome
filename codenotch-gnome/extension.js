@@ -74,6 +74,14 @@ export default class CodenotchExtension extends Extension {
 
     async _load() {
         const generation = ++this._generation;
+        // A schema that gained a key after the shell started is invisible to
+        // a Settings object made before that, so a reload after a schema
+        // change (dev/install.sh recompiling it) would throw on the new key.
+        // Re-creating it here picks up the current schema every time.
+        if (this._settingsChangedId)
+            this._settings.disconnect(this._settingsChangedId);
+        this._settings = this.getSettings();
+        this._settingsChangedId = this._settings.connect('changed', (_s, key) => this._onSettingsChanged(key));
         const dir = this._stageSource();
         const mods = {};
         for (const name of MODULES)

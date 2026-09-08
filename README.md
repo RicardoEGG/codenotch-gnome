@@ -93,6 +93,7 @@ Open them from the Extensions app or with `gnome-extensions prefs codenotch-gnom
 - **Posição**: which screen edge the notch is welded to (right, left, top,
   bottom) and where along that edge it sits. A top notch hangs below the
   panel; a bottom one rests on the dock.
+- **Ferramentas**: which tools appear, each with its own on/off switch.
 - **Aparência**: body colour, body opacity, overall size, text size, and
   whether the percent label shows under each ring. Rings and glyphs never
   change colour.

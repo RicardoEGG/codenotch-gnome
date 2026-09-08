@@ -39,11 +39,15 @@ export function createApp(settings) {
     let store = null;
     const views = [];
     try {
-        // Only the tools that are signed in on this machine get a cell.
+        // Only the tools that are signed in on this machine, and not turned
+        // off in the preferences, get a cell.
+        const disabled = new Set(settings.get_strv('disabled-providers'));
         const providers = [
             new ClaudeProvider(), new CodexProvider(),
             new AntigravityProvider(), new GrokProvider(),
-        ].filter(p => p.available());
+        ].filter(p => p.available() && !disabled.has(p.id));
+        if (providers.length === 0)
+            console.warn('codenotch: every provider is disabled or unavailable');
         store = new UsageStore(providers, {refreshInterval: settings.get_int('refresh-interval')});
         // Started before the views so they draw the remembered reading at once.
         store.start();

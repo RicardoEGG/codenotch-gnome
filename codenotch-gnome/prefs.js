@@ -4,6 +4,20 @@ import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
+import {ClaudeProvider} from './providers/claude.js';
+import {CodexProvider} from './providers/codex.js';
+import {AntigravityProvider} from './providers/antigravity.js';
+import {GrokProvider} from './providers/grok.js';
+
+// Fixed display order for the "Ferramentas" switches, independent of the
+// order app.js builds providers in.
+const TOOLS = [
+    {Provider: ClaudeProvider, title: 'Claude Code'},
+    {Provider: CodexProvider, title: 'Codex'},
+    {Provider: AntigravityProvider, title: 'Antigravity (agy)'},
+    {Provider: GrokProvider, title: 'Grok'},
+];
+
 const EDGES = [
     ['right', 'Direita'],
     ['left', 'Esquerda'],
@@ -59,6 +73,28 @@ function sliderRow(settings, key, {title, subtitle, min, max, step, format}) {
 function toHex(rgba) {
     const c = v => Math.round(v * 255).toString(16).padStart(2, '0');
     return `#${c(rgba.red)}${c(rgba.green)}${c(rgba.blue)}`;
+}
+
+// An Adw switch row toggling one provider id's membership in the
+// disabled-providers string-array key.
+function toolRow(settings, id, {title, subtitle}) {
+    const row = new Adw.SwitchRow({title, subtitle});
+    const sync = () => {
+        const active = !settings.get_strv('disabled-providers').includes(id);
+        if (row.active !== active)
+            row.active = active;
+    };
+    sync();
+    row.connect('notify::active', () => {
+        const disabled = settings.get_strv('disabled-providers');
+        const has = disabled.includes(id);
+        if (row.active && has)
+            settings.set_strv('disabled-providers', disabled.filter(x => x !== id));
+        else if (!row.active && !has)
+            settings.set_strv('disabled-providers', [...disabled, id]);
+    });
+    settings.connect('changed::disabled-providers', sync);
+    return row;
 }
 
 function colorRow(settings, key, {title, subtitle}) {
@@ -120,6 +156,22 @@ export default class CodenotchPreferences extends ExtensionPreferences {
             min: 0, max: 1, step: 0.01,
             format: v => `${Math.round(v * 100)}%`,
         }));
+
+        // Which tools show up
+        const tools = new Adw.PreferencesGroup({
+            title: 'Ferramentas',
+            description: 'Quais assistentes aparecem. Uma ferramenta só é lida quando ' +
+                'está instalada e com login nesta máquina.',
+        });
+        page.add(tools);
+
+        for (const {Provider, title} of TOOLS) {
+            const provider = new Provider();
+            tools.add(toolRow(settings, provider.id, {
+                title,
+                subtitle: provider.available() ? 'Instalado' : 'Não encontrado nesta máquina',
+            }));
+        }
 
         // How it looks
         const look = new Adw.PreferencesGroup({
