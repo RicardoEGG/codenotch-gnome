@@ -30,6 +30,7 @@ credential exists.
 | Claude Code | `~/.claude/.credentials.json` | `api.anthropic.com/api/oauth/usage` |
 | Codex CLI | `~/.codex/auth.json` | `chatgpt.com/backend-api/wham/usage` |
 | Antigravity (`agy`) | GNOME keyring, service `gemini` / `antigravity` | `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` |
+| Grok CLI | `~/.grok/auth.json` | `cli-chat-proxy.grok.com/v1/billing` |
 
 Tokens are read only, never refreshed or written. If one expires, the card
 says so and the tool itself refreshes it on its next run.
@@ -41,6 +42,13 @@ card counts the requests `agy` logged today from its own transcripts under
 token lives one hour and only `agy` renews it; the notch never does, so an hour
 after the last `agy` run the card says the sign-in expired and falls back to
 that local count.
+
+Grok's billing endpoint answers for every account, but it only states numbers
+where something is metered; an account with no published allowance gets zeros
+back, and the card counts the turns `grok` closed today in its session logs
+under `~/.grok/sessions/` instead, marked with a `~`. The CLI refreshes its own
+six-hour token, so an expired sign-in is not a failure here either: the card
+says so and falls back to that same local count.
 
 Usage is read every minute only while a tool is active and every five
 minutes otherwise; unfolding the notch never triggers a read. The last
@@ -117,7 +125,7 @@ scaled so the ring is 44 px; change nothing there without a ruler.
 
 ## Not ported (yet)
 
-- Cursor, Grok, GLM and OpenCode providers.
+- Cursor, GLM and OpenCode providers.
 - The settings orb; preferences live in a normal GNOME preferences window.
 - Codex session activity (it lives in a SQLite file).
 

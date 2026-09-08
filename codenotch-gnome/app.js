@@ -7,6 +7,7 @@ import {configureLayout, Appearance} from './layout.js';
 import {ClaudeProvider} from './providers/claude.js';
 import {CodexProvider} from './providers/codex.js';
 import {AntigravityProvider} from './providers/antigravity.js';
+import {GrokProvider} from './providers/grok.js';
 import * as http from './providers/http.js';
 import {UsageStore} from './store.js';
 import {Notch} from './notch.js';
@@ -39,8 +40,10 @@ export function createApp(settings) {
     const views = [];
     try {
         // Only the tools that are signed in on this machine get a cell.
-        const providers = [new ClaudeProvider(), new CodexProvider(), new AntigravityProvider()]
-            .filter(p => p.available());
+        const providers = [
+            new ClaudeProvider(), new CodexProvider(),
+            new AntigravityProvider(), new GrokProvider(),
+        ].filter(p => p.available());
         store = new UsageStore(providers, {refreshInterval: settings.get_int('refresh-interval')});
         // Started before the views so they draw the remembered reading at once.
         store.start();

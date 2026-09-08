@@ -181,12 +181,7 @@ const ANTIGRAVITY_BUSY_WINDOW = 45 * 1000;
 const transcriptCounts = new Map();
 
 export function readAntigravityActivity(roots, now = Date.now()) {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    const dayStart = start.getTime();
-    const dayEnd = end.getTime();
+    const {dayStart, dayEnd} = localDay(now);
 
     let requestsToday = 0;
     let lastRequest = null;
@@ -249,6 +244,183 @@ export class AntigravityActivityMonitor {
         this._sessions = found;
         this._onChange?.(found);
     }
+}
+
+// A timestamp counts for the day it lands in here, not the day it is in UTC.
+function localDay(now) {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return {dayStart: start.getTime(), dayEnd: end.getTime()};
+}
+
+// Grok CLI lists the TUIs it has open in ~/.grok/active_sessions.json and
+// appends to that session's updates.jsonl while a turn runs, so a file written
+// moments ago under a live pid is work happening now. The same file closes
+// every turn with a `turn_completed` update carrying the turn's model calls,
+// which is what the day's requests are counted from.
+const GROK_POLL = 3;
+const GROK_BUSY_WINDOW = 45 * 1000;
+
+const grokTurnCounts = new Map();
+
+export function readGrokActivity(root, now = Date.now()) {
+    const {dayStart, dayEnd} = localDay(now);
+    let requestsToday = 0;
+    for (const encoded of childNames(root)) {
+        for (const id of childNames(`${root}/${encoded}`)) {
+            const path = `${root}/${encoded}/${id}/updates.jsonl`;
+            const modified = modifiedMillis(path);
+            if (modified === null)
+                continue;
+            requestsToday += grokTurnsToday(path, modified, dayStart, dayEnd);
+        }
+    }
+    return {requestsToday};
+}
+
+export class GrokActivityMonitor {
+    constructor(activePath, sessionsRoot, onChange) {
+        this._activePath = activePath;
+        this._sessionsRoot = sessionsRoot;
+        this._onChange = onChange;
+        this._sessions = [];
+        this._timer = 0;
+    }
+
+    get sessions() {
+        return this._sessions;
+    }
+
+    start() {
+        this._rescan();
+        this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, GROK_POLL, () => {
+            this._rescan();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    stop() {
+        if (this._timer)
+            GLib.source_remove(this._timer);
+        this._timer = 0;
+    }
+
+    _rescan() {
+        const now = Date.now();
+        const rows = readJSON(this._activePath);
+        const found = [];
+        for (const row of Array.isArray(rows) ? rows : []) {
+            const session = grokSession(row, this._sessionsRoot, now);
+            if (session)
+                found.push(session);
+        }
+        found.sort((a, b) => b.since - a.since);
+        if (JSON.stringify(found) === JSON.stringify(this._sessions))
+            return;
+        this._sessions = found;
+        this._onChange?.(found);
+    }
+}
+
+function grokSession(row, root, now) {
+    const id = typeof row?.session_id === 'string' ? row.session_id : '';
+    if (!id)
+        return null;
+    // A row outlives the process that wrote it, so the pid is the liveness
+    // check; a row without one is left to the mtime below to judge.
+    if (typeof row.pid === 'number' && !GLib.file_test(`/proc/${row.pid}`, GLib.FileTest.IS_DIR))
+        return null;
+    const directory = grokSessionDirectory(id, row.cwd, root);
+    if (!directory)
+        return null;
+    const modified = modifiedMillis(`${directory}/updates.jsonl`);
+    if (modified === null || now - modified > GROK_BUSY_WINDOW)
+        return null;
+    const folder = typeof row.cwd === 'string'
+        ? row.cwd.split('/').filter(Boolean).pop() ?? row.cwd : 'Grok';
+    return {
+        id: `grok.${id}`,
+        name: folder,
+        detail: 'Grok',
+        state: 'busy',
+        waitingFor: null,
+        since: modified,
+    };
+}
+
+// The layout is sessions/<percent-encoded cwd>/<session id>/. The encoding is
+// Grok's, so the cwd is only a hint; the id alone is enough to find the
+// directory when the guess misses.
+function grokSessionDirectory(id, cwd, root) {
+    if (typeof cwd === 'string') {
+        const guess = `${root}/${percentEncode(cwd)}/${id}`;
+        if (GLib.file_test(guess, GLib.FileTest.IS_DIR))
+            return guess;
+    }
+    for (const encoded of childNames(root)) {
+        const candidate = `${root}/${encoded}/${id}`;
+        if (GLib.file_test(candidate, GLib.FileTest.IS_DIR))
+            return candidate;
+    }
+    return null;
+}
+
+// Alphanumerics and -._~ survive; every other byte becomes %XX.
+function percentEncode(text) {
+    let out = '';
+    for (const byte of new TextEncoder().encode(text)) {
+        const char = String.fromCharCode(byte);
+        out += /[A-Za-z0-9\-._~]/.test(char)
+            ? char : `%${byte.toString(16).toUpperCase().padStart(2, '0')}`;
+    }
+    return out;
+}
+
+function grokTurnsToday(path, modified, dayStart, dayEnd) {
+    const cached = grokTurnCounts.get(path);
+    if (cached && cached.modified === modified && cached.dayStart === dayStart)
+        return cached.count;
+    const count = countGrokTurns(path, dayStart, dayEnd);
+    grokTurnCounts.set(path, {modified, dayStart, count});
+    return count;
+}
+
+// One `turn_completed` line closes each turn, and its `usage.modelCalls` is
+// how many times that turn went to the model — a turn that ran tools went
+// more than once. `timestamp` is in seconds.
+function countGrokTurns(path, dayStart, dayEnd) {
+    let text;
+    try {
+        const [ok, bytes] = GLib.file_get_contents(path);
+        if (!ok)
+            return 0;
+        text = new TextDecoder().decode(bytes);
+    } catch {
+        return 0;
+    }
+    let count = 0;
+    for (const line of text.split('\n')) {
+        // These run to megabytes and only one line a turn is the one wanted.
+        if (!line.includes('turn_completed'))
+            continue;
+        let entry;
+        try {
+            entry = JSON.parse(line);
+        } catch {
+            continue;
+        }
+        const update = entry?.params?.update;
+        if (update?.sessionUpdate !== 'turn_completed')
+            continue;
+        const at = Number(entry.timestamp) * 1000;
+        if (!(at >= dayStart && at < dayEnd))
+            continue;
+        const calls = Number(update.usage?.modelCalls);
+        count += Number.isFinite(calls) && calls > 0 ? calls : 1;
+    }
+    return count;
 }
 
 function childNames(directory) {
